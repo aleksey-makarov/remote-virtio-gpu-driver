@@ -1,0 +1,3 @@
+- Remove the unneсessary 'lo_driver' level
+- use spin_lock() instead of _irqsave() as there is no interrupts
+- Driver should not wait for the end of initialization
