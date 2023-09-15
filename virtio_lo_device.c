@@ -144,7 +144,7 @@ static void virtio_lo_add_pdev(struct work_struct *work)
 	unsigned id = atomic_fetch_add(1, &vilo_device_id);
 	dev->pdev = platform_device_register_data(
 		&vl_device_parent, "virtio-lo", id, &dev, sizeof(dev));
-	complete_all(&dev->init_done);
+	// complete_all(&dev->init_done);
 }
 
 static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
