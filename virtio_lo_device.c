@@ -386,10 +386,8 @@ void virtio_lo_set_queue(struct virtio_lo_device *dev, unsigned qidx, u32 size,
 {
 	struct virtio_lo_vq_info *info = &dev->queues[qidx];
 	dev_notice(&vl_device_parent,
-		   "setting queue addr %u size %u\n"
-		   "\tdesc  %016llx\n"
-		   "\tavail %016llx\n"
-		   "\tused  %016llx\n",
+		   "setting queue addr %u size %u "
+		   "tdesc 0x%016llx avail 0x%016llx tused  0x%016llx",
 		   qidx, size, desc, avail, used);
 	info->size = size;
 	info->desc = desc;

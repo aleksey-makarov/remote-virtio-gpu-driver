@@ -40,7 +40,7 @@ static u64 vl_get_features(struct virtio_device *vdev)
 {
 	struct virtio_lo_device *vl_dev = to_virtio_lo_device(vdev);
 
-	dev_notice(&vdev->dev, "get features %llx", vl_dev->features);
+	dev_notice(&vdev->dev, "get features 0x%llx", vl_dev->features);
 
 	return vl_dev->features;
 }
@@ -50,7 +50,7 @@ static int vl_finalize_features(struct virtio_device *vdev)
 	struct virtio_lo_device *vl_dev = to_virtio_lo_device(vdev);
 	vring_transport_features(vdev);
 	vl_dev->features = vdev->features;
-	dev_notice(&vdev->dev, "finalize features %llx", vl_dev->features);
+	dev_notice(&vdev->dev, "finalize features 0x%llx", vl_dev->features);
 	return 0;
 }
 
