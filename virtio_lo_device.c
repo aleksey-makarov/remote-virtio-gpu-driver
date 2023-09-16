@@ -148,16 +148,16 @@ static void virtio_lo_add_pdev(struct work_struct *work)
 }
 
 static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
-			      struct virtio_lo_devinfo __user *info)
+			      struct virtio_lo_devinfo __user *uinfo)
 {
-	struct virtio_lo_devinfo di;
+	struct virtio_lo_devinfo info;
 	struct virtio_lo_device *dev;
 	struct virtio_lo_qinfo *qi;
 	unsigned i;
 	long ret = 0;
 	unsigned long flags;
 
-	if (copy_from_user(&di, info, sizeof(di))) {
+	if (copy_from_user(&info, uinfo, sizeof(info))) {
 		return -EFAULT;
 	}
 
@@ -169,21 +169,21 @@ static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
 	spin_lock_init(&dev->config_lock);
 	spin_lock_init(&dev->status_lock);
 
-	dev->device_id = di.device_id;
-	dev->vendor_id = di.vendor_id;
-	dev->card_index = di.card_index;
-	dev->nqueues = di.nqueues;
-	dev->features = dev->device_features = di.features;
+	dev->device_id = info.device_id;
+	dev->vendor_id = info.vendor_id;
+	dev->card_index = info.card_index;
+	dev->nqueues = info.nqueues;
+	dev->features = dev->device_features = info.features;
 
-	dev->config_size = di.config_size;
+	dev->config_size = info.config_size;
 	dev->config = kzalloc(dev->config_size, GFP_KERNEL);
 	if (!dev->config) {
 		ret = -ENOMEM;
 		goto err_dev;
 	}
-	dev->config_kick = eventfd_ctx_fdget(di.config_kick);
+	dev->config_kick = eventfd_ctx_fdget(info.config_kick);
 
-	if (copy_from_user(dev->config, di.config, di.config_size)) {
+	if (copy_from_user(dev->config, info.config, info.config_size)) {
 		ret = -EFAULT;
 		goto err_conf;
 	}
@@ -193,7 +193,7 @@ static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
 		ret = -ENOMEM;
 		goto err_conf;
 	}
-	if (copy_from_user(qi, di.qinfo, dev->nqueues * sizeof(*qi))) {
+	if (copy_from_user(qi, info.qinfo, dev->nqueues * sizeof(*qi))) {
 		ret = -EFAULT;
 		goto err_qi;
 	}
@@ -235,17 +235,17 @@ static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
 		qi[i].avail = dev->queues[i].avail;
 		qi[i].used = dev->queues[i].used;
 	}
-	if (copy_to_user(di.qinfo, qi, dev->nqueues * sizeof(*qi))) {
+	if (copy_to_user(info.qinfo, qi, dev->nqueues * sizeof(*qi))) {
 		ret = -EFAULT;
 	}
-	if (copy_to_user(&info->idx, &dev->idx, sizeof(dev->idx))) {
+	if (copy_to_user(&uinfo->idx, &dev->idx, sizeof(dev->idx))) {
 		ret = -EFAULT;
 	}
-	if (copy_to_user(&info->features, &dev->features,
+	if (copy_to_user(&uinfo->features, &dev->features,
 			 sizeof(dev->features))) {
 		ret = -EFAULT;
 	}
-	if (copy_to_user(di.config, dev->config, dev->config_size)) {
+	if (copy_to_user(info.config, dev->config, dev->config_size)) {
 		ret = -EFAULT;
 	}
 	spin_lock_irqsave(&owner->lock, flags);
@@ -289,28 +289,28 @@ static long vilo_ioctl_deldev(struct virtio_lo_owner *owner,
 }
 
 static long vilo_ioctl_getconf(struct virtio_lo_owner *owner,
-			       struct virtio_lo_config __user *conf)
+			       struct virtio_lo_config __user *uconf)
 {
-	struct virtio_lo_config c;
+	struct virtio_lo_config conf;
 	struct virtio_lo_device *dev;
 	void *mem;
 	long ret = 0;
-	if (copy_from_user(&c, conf, sizeof(c)))
+	if (copy_from_user(&conf, uconf, sizeof(conf)))
 		return -EFAULT;
-	dev = virtio_owner_getdev(owner, c.idx);
+	dev = virtio_owner_getdev(owner, conf.idx);
 	if (!dev) {
 		return -ENOENT;
 	}
-	if (c.offset >= dev->config_size ||
-	    c.offset + c.len > dev->config_size) {
+	if (conf.offset >= dev->config_size ||
+	    conf.offset + conf.len > dev->config_size) {
 		return -EINVAL;
 	}
-	mem = kmalloc(c.len, GFP_KERNEL);
+	mem = kmalloc(conf.len, GFP_KERNEL);
 	if (!mem) {
 		return -ENOMEM;
 	}
-	virtio_lo_config_get(dev, c.offset, mem, c.len);
-	if (copy_to_user(c.config, mem, c.len)) {
+	virtio_lo_config_get(dev, conf.offset, mem, conf.len);
+	if (copy_to_user(conf.config, mem, conf.len)) {
 		ret = -EFAULT;
 	}
 	kfree(mem);
@@ -319,31 +319,31 @@ static long vilo_ioctl_getconf(struct virtio_lo_owner *owner,
 }
 
 static long vilo_ioctl_setconf(struct virtio_lo_owner *owner,
-			       const struct virtio_lo_config __user *conf)
+			       const struct virtio_lo_config __user *uconf)
 {
-	struct virtio_lo_config c;
+	struct virtio_lo_config conf;
 	struct virtio_lo_device *dev;
 	void *mem;
 	long ret;
-	if (copy_from_user(&c, conf, sizeof(c)))
+	if (copy_from_user(&conf, uconf, sizeof(conf)))
 		return -EFAULT;
-	dev = virtio_owner_getdev(owner, c.idx);
+	dev = virtio_owner_getdev(owner, conf.idx);
 	if (!dev) {
 		return -ENOENT;
 	}
-	if (c.offset >= dev->config_size ||
-	    c.offset + c.len > dev->config_size) {
+	if (conf.offset >= dev->config_size ||
+	    conf.offset + conf.len > dev->config_size) {
 		return -EINVAL;
 	}
 
-	mem = kmalloc(c.len, GFP_KERNEL);
+	mem = kmalloc(conf.len, GFP_KERNEL);
 	if (!mem) {
 		return -ENOMEM;
 	}
-	if (copy_from_user(mem, c.config, c.len)) {
+	if (copy_from_user(mem, conf.config, conf.len)) {
 		ret = -EFAULT;
 	} else {
-		virtio_lo_config_set(dev, c.offset, mem, c.len);
+		virtio_lo_config_set(dev, conf.offset, mem, conf.len);
 		virtio_lo_config_driver(dev->pdev);
 		ret = 0;
 	}
@@ -352,20 +352,20 @@ static long vilo_ioctl_setconf(struct virtio_lo_owner *owner,
 }
 
 static long vilo_ioctl_kick(struct virtio_lo_owner *owner,
-			    const struct virtio_lo_kick __user *kick)
+			    const struct virtio_lo_kick __user *ukick)
 {
-	struct virtio_lo_kick k;
+	struct virtio_lo_kick kick;
 	struct virtio_lo_device *dev;
-	if (copy_from_user(&k, kick, sizeof(k)))
+	if (copy_from_user(&kick, ukick, sizeof(kick)))
 		return -EFAULT;
-	dev = virtio_owner_getdev(owner, k.idx);
+	dev = virtio_owner_getdev(owner, kick.idx);
 	if (!dev) {
 		return -ENOENT;
 	}
-	if (k.qidx >= dev->nqueues) {
+	if (kick.qidx >= dev->nqueues) {
 		return -EINVAL;
 	}
-	virtio_lo_kick_driver(dev->pdev, k.qidx);
+	virtio_lo_kick_driver(dev->pdev, kick.qidx);
 
 	return 0;
 }
