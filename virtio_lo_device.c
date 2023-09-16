@@ -265,22 +265,27 @@ err_dev:
 	return ret;
 }
 
-static long vilo_ioctl_deldev(struct virtio_lo_owner *owner, unsigned idx)
+static long vilo_ioctl_deldev(struct virtio_lo_owner *owner,
+			      struct virtio_lo_config __user *uidx)
 {
 	unsigned long flags;
-	long ret = -ENOENT;
 	struct virtio_lo_device *dev;
+	unsigned int idx;
 
-	spin_lock_irqsave(&owner->lock, flags);
+	if (copy_from_user(&idx, uidx, sizeof(idx)))
+		return -EFAULT;
 
 	dev = virtio_owner_getdev_unlocked(owner, idx);
-	if (dev) {
-		list_del(&dev->devlist);
-		virtio_lo_device_release(dev);
-		ret = 0;
-	}
+	if (!dev)
+		return -ENOENT;
+
+	spin_lock_irqsave(&owner->lock, flags);
+	list_del(&dev->devlist);
 	spin_unlock_irqrestore(&owner->lock, flags);
-	return ret;
+
+	virtio_lo_device_release(dev);
+
+	return 0;
 }
 
 static long vilo_ioctl_getconf(struct virtio_lo_owner *owner,
@@ -452,7 +457,7 @@ static long virtio_lo_misc_device_ioctl(struct file *file, unsigned int cmd,
 		ret = vilo_ioctl_adddev(owner, argp);
 		break;
 	case VIRTIO_LO_DELDEV:
-		ret = vilo_ioctl_deldev(owner, arg);
+		ret = vilo_ioctl_deldev(owner, argp);
 		break;
 	case VIRTIO_LO_GCONF:
 		ret = vilo_ioctl_getconf(owner, argp);
