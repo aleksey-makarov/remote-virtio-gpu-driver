@@ -70,7 +70,7 @@ static int virtio_lo_misc_device_open(struct inode *inode, struct file *file)
 {
 	struct virtio_lo_owner *owner;
 
-	owner = kmalloc(sizeof(*owner), GFP_KERNEL);
+	owner = kzalloc(sizeof(*owner), GFP_KERNEL);
 	spin_lock_init(&owner->lock);
 	INIT_LIST_HEAD(&owner->devlist);
 	file->private_data = owner;
@@ -161,7 +161,7 @@ static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
 		return -EFAULT;
 	}
 
-	dev = kcalloc(1, sizeof(*dev), GFP_KERNEL);
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
 		return -ENOMEM;
 	}
@@ -176,7 +176,7 @@ static long vilo_ioctl_adddev(struct virtio_lo_owner *owner,
 	dev->features = dev->device_features = di.features;
 
 	dev->config_size = di.config_size;
-	dev->config = kmalloc(dev->config_size, GFP_KERNEL);
+	dev->config = kzalloc(dev->config_size, GFP_KERNEL);
 	if (!dev->config) {
 		ret = -ENOMEM;
 		goto err_dev;
