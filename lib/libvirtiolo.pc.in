@@ -1,0 +1,6 @@
+Name: libvirtiolo
+Description: VIRTIO loopback library
+Version: @LIBVIRTIOLO_VERSION@
+
+Libs: -L@CMAKE_INSTALL_FULL_LIBDIR@ -lvirtiolo
+Cflags: -I@CMAKE_INSTALL_FULL_INCLUDEDIR@
