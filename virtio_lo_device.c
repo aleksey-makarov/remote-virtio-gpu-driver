@@ -19,6 +19,9 @@
 #include "virtio_lo_device.h"
 #include "virtio_lo.h"
 
+#define MTRACE_FILE "virtio_lo_device.c"
+#include "mtrace.h"
+
 static void virtio_lo_add_pdev(struct work_struct *work);
 
 void vl_device_parent_release(struct device *dev)
@@ -356,6 +359,9 @@ static long vilo_ioctl_kick(struct virtio_lo_owner *owner,
 {
 	struct virtio_lo_kick kick;
 	struct virtio_lo_device *dev;
+
+	// MTRACE("begin");
+
 	if (copy_from_user(&kick, ukick, sizeof(kick)))
 		return -EFAULT;
 	dev = virtio_owner_getdev(owner, kick.idx);
@@ -365,7 +371,10 @@ static long vilo_ioctl_kick(struct virtio_lo_owner *owner,
 	if (kick.qidx >= dev->nqueues) {
 		return -EINVAL;
 	}
+
 	virtio_lo_kick_driver(dev->pdev, kick.qidx);
+
+	// MTRACE("end");
 
 	return 0;
 }
@@ -466,6 +475,7 @@ static long virtio_lo_misc_device_ioctl(struct file *file, unsigned int cmd,
 		ret = vilo_ioctl_setconf(owner, argp);
 		break;
 	case VIRTIO_LO_KICK:
+		// MTRACE("ioctl: kick");
 		ret = vilo_ioctl_kick(owner, argp);
 		break;
 	default:

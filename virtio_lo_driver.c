@@ -15,6 +15,9 @@
 
 #include "virtio_lo_device.h"
 
+#define MTRACE_FILE "virtio_lo_driver.c"
+#include "mtrace.h"
+
 /* The alignment to use between consumer and producer parts of vring.
  * Currently hardcoded to the page size. */
 #define VIRTIO_LO_VRING_ALIGN PAGE_SIZE
@@ -151,9 +154,13 @@ void virtio_lo_kick_driver(struct platform_device *pdev, int qidx)
 {
 	struct virtio_lo_driver *vl_driv;
 
+	// MTRACE("begin %d", qidx);
+
 	vl_driv = platform_get_drvdata(pdev);
 	if (qidx >= 0) {
+		// MTRACE("vring_interrupt() ...");
 		vring_interrupt(0, vl_driv->queues[qidx]);
+		// MTRACE("... vring_interrupt()");
 	} else {
 		struct virtio_lo_device *vl_dev = vl_driv->device;
 		unsigned i;
@@ -161,6 +168,8 @@ void virtio_lo_kick_driver(struct platform_device *pdev, int qidx)
 			vring_interrupt(0, vl_driv->queues[i]);
 		}
 	}
+
+	// MTRACE("end");
 }
 
 void virtio_lo_config_driver(struct platform_device *pdev)
