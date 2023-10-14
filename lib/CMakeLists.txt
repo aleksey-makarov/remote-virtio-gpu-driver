@@ -23,10 +23,13 @@ target_link_libraries(test_console_receive PRIVATE virtiolo)
 add_executable(test_console_send test_console_send.c)
 target_link_libraries(test_console_send PRIVATE virtiolo)
 
+add_executable(test test.c)
+target_link_libraries(test PRIVATE virtiolo)
+
 include(GNUInstallDirs)
 
 configure_file(libvirtiolo.pc.in libvirtiolo.pc @ONLY)
 
-install(TARGETS virtiolo test_console_receive test_console_send)
+install(TARGETS virtiolo test_console_receive test_console_send test)
 install(FILES libvirtiolo.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libvirtiolo.pc DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
