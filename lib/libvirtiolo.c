@@ -291,30 +291,32 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 	vr->last_avail_idx++;
 
 	unsigned int ion = 1;
-	bool allw;
-	bool allr;
+	unsigned int ion_transmit = 0;
 
-	if (d.flags & VRING_DESC_F_WRITE) {
-		allw = true;
-		allr = false;
-	} else {
-		allw = false;
-		allr = true;
-	}
+	if (!(d.flags & VRING_DESC_F_WRITE))
+		ion_transmit++;
+
+	// trace("first buffer: %u@0x%llx for %s", d.len, d.addr, d.flags & VRING_DESC_F_WRITE ? "WRITE" : "READ");
+	// trace("ion=%u, ion_transmit=%u", ion, ion_transmit);
 
 	struct vring_desc di = d;
 	while (di.flags & VRING_DESC_F_NEXT) {
 		di = vr->vring.desc[di.next % vr->vring.num];
-		if (di.flags & VRING_DESC_F_WRITE)
-			allr = false;
-		else
-			allw = false;
-		ion++;
-	}
 
-	if ( !(allw || allr) ) {
-		trace_err("mixed buffers - not implemented");
-		return NULL;
+		// trace("buffer: %u@0x%llx for %s", di.len, di.addr, di.flags & VRING_DESC_F_WRITE ? "WRITE" : "READ");
+
+		if (ion_transmit == ion++) {
+			if (!(di.flags & VRING_DESC_F_WRITE)) {
+				ion_transmit++;
+			}
+		} else {
+			if (!(di.flags & VRING_DESC_F_WRITE)) {
+				trace_err("read buffers follow write buffers - not implemented");
+				return NULL;
+			}
+		}
+
+		// trace("ion=%u, ion_transmit=%u", ion, ion_transmit);
 	}
 
 	struct vlo_buf *req = malloc(sizeof(struct vlo_buf) + ion * sizeof(struct iovec));
@@ -327,9 +329,8 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 	req->vr = vr;
 	req->mapped = false;
 	req->refcount = 1;
-	req->allr = allr;
-	req->allw = allw;
 	req->ion = ion;
+	req->ion_transmit = ion_transmit;
 
 	for (i = 0, di = d; i < ion; i++) {
 
@@ -347,8 +348,8 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 
 	req->mapped = true;
 
-	assert( !(req->allr && req->allw) );
 	assert( req->ion > 0 );
+	assert( req->ion >= req->ion_transmit );
 
 	// trace("new req %p", req);
 	return req;
@@ -397,8 +398,6 @@ void vlo_buf_put(struct vlo_buf *req, unsigned int resp_len)
 	struct timespec barrier_delay = { .tv_nsec = 10 };
 	size_t i;
 
-	// resp_len = copy_to_iov(req->w, req->nw, resp, resp_len);
-
 	for (i = 0; i < req->ion; i++)
 		unmap_guest(req->io[i].iov_base, req->io[i].iov_len);
 
@@ -426,9 +425,8 @@ int vlo_kick(struct vlo *vl, int queue)
 		.qidx = queue,
 	};
 
-	trace("kick %d ...", queue);
+	trace("ioctl(VIRTIO_LO_KICK, %d)", queue);
 	err = ioctl(vl->fd, VIRTIO_LO_KICK, &k);
-	trace("...done");
 	if (err) {
 		trace_err_p("ioctl(VIRTIO_LO_KICK)");
 		return -1;
@@ -450,6 +448,7 @@ int vlo_config_get(struct vlo *vl, void *config, unsigned int config_length)
 		.len = vl->config_size
 	};
 
+	trace("ioctl(VIRTIO_LO_GCONF)");
 	err = ioctl(vl->fd, VIRTIO_LO_GCONF, &cfg);
 	if (err)
 		trace_err_p("ioctl(VIRTIO_LO_GCONF)");
@@ -470,6 +469,7 @@ int vlo_config_set(struct vlo *vl, void *config, unsigned int config_length)
 		.len = vl->config_size
 	};
 
+	trace("ioctl(VIRTIO_LO_SCONF)");
 	err = ioctl(vl->fd, VIRTIO_LO_SCONF, &cfg);
 	if (err)
 		trace_err_p("ioctl(VIRTIO_LO_SCONF)");

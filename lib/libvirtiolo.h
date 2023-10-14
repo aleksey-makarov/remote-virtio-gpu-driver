@@ -17,10 +17,16 @@ struct vlo_buf {
 	bool mapped;
 	unsigned int refcount;
 
-	bool allw;
-	bool allr;
-
+	/* length of io[] array */
 	unsigned int ion;
+	/*
+	 * in the io[] array first zero or more items
+	 * mapped readonly (guest transmit),
+	 * all other are mapped write only (guest receive);
+	 *
+	 * ion_transmit is the length of the guest transmit subarray
+	 */
+	unsigned int ion_transmit;
 	struct iovec io[];
 };
 

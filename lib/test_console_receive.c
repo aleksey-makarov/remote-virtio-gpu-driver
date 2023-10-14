@@ -24,9 +24,9 @@ int handle_tx(struct vlo *vl)
 		return -1;
 	}
 
-	trace("req: allw=%s allr=%s ion=%u", req->allw ? "true" : "false", req->allr ? "true" : "false", req->ion);
+	trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
 
-	if (!req->allr) {
+	if (req->ion != req->ion_transmit) {
 		trace_err("not all buffers are readable");
 		return -1;
 	}

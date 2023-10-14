@@ -39,9 +39,9 @@ static int receive1(struct vlo *vl)
 		return -1;
 	}
 
-	// trace("req: allw=%s allr=%s ion=%u", req->allw ? "true" : "false", req->allr ? "true" : "false", req->ion);
+	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
 
-	if (!req->allw) {
+	if (req->ion_transmit != 0) {
 		trace_err("not all buffers are writable");
 		ret = -1;
 		goto done;
@@ -89,7 +89,7 @@ static int transmit1(struct vlo *vl)
 
 	// trace("req: allw=%s allr=%s ion=%u", req->allw ? "true" : "false", req->allr ? "true" : "false", req->ion);
 
-	if (!req->allr) {
+	if (req->ion != req->ion_transmit) {
 		trace_err("not all buffers are readable");
 		ret = -1;
 		goto done;
