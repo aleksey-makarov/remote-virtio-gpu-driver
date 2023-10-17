@@ -105,7 +105,7 @@ static void sg_init_one_page(struct scatterlist *sg, struct page *p)
 
 static void notify_queue_fini(struct ports_device *d)
 {
-	MTRACE();
+	// MTRACE();
 	while (1) {
 		unsigned int len;
 		struct scatterlist *sg = virtqueue_get_buf(d->notify_vq, &len);
@@ -115,16 +115,16 @@ static void notify_queue_fini(struct ports_device *d)
 		__free_page(p);
 	}
 
-	MTRACE();
+	// MTRACE();
 	while (1) {
 		struct scatterlist *sg = virtqueue_detach_unused_buf(d->notify_vq);
-		MTRACE("%p", sg);
+		// MTRACE("%p", sg);
 		if (!sg)
 			break;
 		struct page *p = sg_page(sg);
 		__free_page(p);
 	}
-	MTRACE("ok");
+	// MTRACE("ok");
 }
 
 static int notify_queue_init(struct ports_device *d)
