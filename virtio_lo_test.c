@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
- * Copyright (C) 2006, 2007, 2009 Rusty Russell, IBM Corporation
- * Copyright (C) 2009, 2010, 2011 Red Hat, Inc.
- * Copyright (C) 2009, 2010, 2011 Amit Shah <amit.shah@redhat.com>
- */
+
 #include <linux/cdev.h>
 #include <linux/debugfs.h>
 #include <linux/completion.h>
@@ -29,7 +25,10 @@
 
 #include "lib/test.h"
 
-#define DEVICE_NAME "virtio-test"
+#define MTRACE_FILE "virtio_lo_test.c"
+#include "mtrace.h"
+
+#define DEVICE_NAME "virtio-lo-test"
 
 static const struct class port_class = {
 	.name = DEVICE_NAME,
@@ -37,6 +36,56 @@ static const struct class port_class = {
 
 /* Major number for this device.  Ports will be created as minors. */
 static int major;
+
+/*
+ * This is a per-device struct that stores data common to all the
+ * ports for that device (vdev->priv).
+ */
+struct ports_device {
+
+	/* The virtio device we're associated with */
+	struct virtio_device *vdev;
+
+#if 0
+	/* Next portdev in the list, head is in the pdrvdata struct */
+	struct list_head list;
+
+	/*
+	 * Workqueue handlers where we process deferred work after
+	 * notification
+	 */
+	struct work_struct control_work;
+	struct work_struct config_work;
+
+	struct list_head ports;
+
+	/* To protect the list of ports */
+	spinlock_t ports_lock;
+
+	/* To protect the vq operations for the control channel */
+	spinlock_t c_ivq_lock;
+	spinlock_t c_ovq_lock;
+
+	/* max. number of ports this device can hold */
+	u32 max_nr_ports;
+
+
+	/*
+	 * A couple of virtqueues for the control channel: one for
+	 * guest->host transfers, one for host->guest transfers
+	 */
+	struct virtqueue *c_ivq, *c_ovq;
+
+	/*
+	 * A control packet buffer for guest->host requests, protected
+	 * by c_ovq_lock.
+	 */
+	struct virtio_test_control cpkt;
+
+	/* Array of per-port IO virtqueues */
+	struct virtqueue **in_vqs, **out_vqs;
+#endif
+};
 
 #if 0
 
@@ -114,52 +163,6 @@ struct port_buffer {
 
 	/* sg is used if spages > 0. sg must be the last in is struct */
 	struct scatterlist sg[];
-};
-
-/*
- * This is a per-device struct that stores data common to all the
- * ports for that device (vdev->priv).
- */
-struct ports_device {
-	/* Next portdev in the list, head is in the pdrvdata struct */
-	struct list_head list;
-
-	/*
-	 * Workqueue handlers where we process deferred work after
-	 * notification
-	 */
-	struct work_struct control_work;
-	struct work_struct config_work;
-
-	struct list_head ports;
-
-	/* To protect the list of ports */
-	spinlock_t ports_lock;
-
-	/* To protect the vq operations for the control channel */
-	spinlock_t c_ivq_lock;
-	spinlock_t c_ovq_lock;
-
-	/* max. number of ports this device can hold */
-	u32 max_nr_ports;
-
-	/* The virtio device we're associated with */
-	struct virtio_device *vdev;
-
-	/*
-	 * A couple of virtqueues for the control channel: one for
-	 * guest->host transfers, one for host->guest transfers
-	 */
-	struct virtqueue *c_ivq, *c_ovq;
-
-	/*
-	 * A control packet buffer for guest->host requests, protected
-	 * by c_ovq_lock.
-	 */
-	struct virtio_test_control cpkt;
-
-	/* Array of per-port IO virtqueues */
-	struct virtqueue **in_vqs, **out_vqs;
 };
 
 struct port_stats {
@@ -1747,21 +1750,42 @@ static void flush_bufs(struct virtqueue *vq, bool can_sleep)
 		free_buf(buf, can_sleep);
 }
 
-static void out_intr(struct virtqueue *vq)
+static void config_work_handler(struct work_struct *work)
 {
-	struct port *port;
-
-	port = find_port_by_vq(vq->vdev->priv, vq);
-	if (!port) {
-		flush_bufs(vq, false);
-		return;
-	}
-
-	wake_up_interruptible(&port->waitqueue);
+// FIXME: console
+//	struct ports_device *portdev;
+//
+//	portdev = container_of(work, struct ports_device, config_work);
+//	if (!use_multiport(portdev)) {
+//		struct virtio_device *vdev;
+//		struct port *port;
+//		u16 rows, cols;
+//
+//		vdev = portdev->vdev;
+//		virtio_cread(vdev, struct virtio_console_config, cols, &cols);
+//		virtio_cread(vdev, struct virtio_console_config, rows, &rows);
+//
+//		port = find_port_by_id(portdev, 0);
+//		set_console_size(port, rows, cols);
+//
+//		/*
+//		 * We'll use this way of resizing only for legacy
+//		 * support.  For newer userspace
+//		 * (VIRTIO_CONSOLE_F_MULTPORT+), use control messages
+//		 * to indicate console size changes so that it can be
+//		 * done per-port.
+//		 */
+//		resize_console(port);
+//	}
 }
 
-static void in_intr(struct virtqueue *vq)
+#endif
+
+static void rx_intr(struct virtqueue *vq)
 {
+	MTRACE();
+
+#if 0
 	struct port *port;
 	unsigned long flags;
 
@@ -1804,142 +1828,52 @@ static void in_intr(struct virtqueue *vq)
 // FIXME: console
 //	if (is_console_port(port) && hvc_poll(port->cons.hvc))
 //		hvc_kick();
+
+#endif
 }
 
-static void control_intr(struct virtqueue *vq)
+static void tx_intr(struct virtqueue *vq)
 {
+	MTRACE();
+#if 0
+	struct port *port;
+
+	port = find_port_by_vq(vq->vdev->priv, vq);
+	if (!port) {
+		flush_bufs(vq, false);
+		return;
+	}
+
+	wake_up_interruptible(&port->waitqueue);
+#endif
+}
+
+static void ctrl_rx_intr(struct virtqueue *vq)
+{
+	MTRACE();
+#if 0
 	struct ports_device *portdev;
 
 	portdev = vq->vdev->priv;
 	schedule_work(&portdev->control_work);
+#endif
 }
 
-static void config_intr(struct virtio_device *vdev)
+static void ctrl_tx_intr(struct virtqueue *vq)
 {
-	struct ports_device *portdev;
-
-	portdev = vdev->priv;
-
-	if (!use_multiport(portdev))
-		schedule_work(&portdev->config_work);
+	MTRACE();
 }
 
-static void config_work_handler(struct work_struct *work)
+static void device_config_changed(struct virtio_device *vdev)
 {
-// FIXME: console
-//	struct ports_device *portdev;
-//
-//	portdev = container_of(work, struct ports_device, config_work);
-//	if (!use_multiport(portdev)) {
-//		struct virtio_device *vdev;
-//		struct port *port;
-//		u16 rows, cols;
-//
-//		vdev = portdev->vdev;
-//		virtio_cread(vdev, struct virtio_console_config, cols, &cols);
-//		virtio_cread(vdev, struct virtio_console_config, rows, &rows);
-//
-//		port = find_port_by_id(portdev, 0);
-//		set_console_size(port, rows, cols);
-//
-//		/*
-//		 * We'll use this way of resizing only for legacy
-//		 * support.  For newer userspace
-//		 * (VIRTIO_CONSOLE_F_MULTPORT+), use control messages
-//		 * to indicate console size changes so that it can be
-//		 * done per-port.
-//		 */
-//		resize_console(port);
-//	}
+	MTRACE();
+	// struct ports_device *portdev;
+	// portdev = vdev->priv;
+	// if (!use_multiport(portdev))
+	// 	schedule_work(&portdev->config_work);
 }
 
-static int init_vqs(struct ports_device *portdev)
-{
-	vq_callback_t **io_callbacks;
-	char **io_names;
-	struct virtqueue **vqs;
-	u32 i, j, nr_ports, nr_queues;
-	int err;
-
-	nr_ports = portdev->max_nr_ports;
-	nr_queues = use_multiport(portdev) ? (nr_ports + 1) * 2 : 2;
-
-	vqs = kmalloc_array(nr_queues, sizeof(struct virtqueue *), GFP_KERNEL);
-	io_callbacks = kmalloc_array(nr_queues, sizeof(vq_callback_t *),
-				     GFP_KERNEL);
-	io_names = kmalloc_array(nr_queues, sizeof(char *), GFP_KERNEL);
-	portdev->in_vqs = kmalloc_array(nr_ports, sizeof(struct virtqueue *),
-					GFP_KERNEL);
-	portdev->out_vqs = kmalloc_array(nr_ports, sizeof(struct virtqueue *),
-					 GFP_KERNEL);
-	if (!vqs || !io_callbacks || !io_names || !portdev->in_vqs ||
-	    !portdev->out_vqs) {
-		err = -ENOMEM;
-		goto free;
-	}
-
-	/*
-	 * For backward compat (newer host but older guest), the host
-	 * spawns a console port first and also inits the vqs for port
-	 * 0 before others.
-	 */
-	j = 0;
-	io_callbacks[j] = in_intr;
-	io_callbacks[j + 1] = out_intr;
-	io_names[j] = "input";
-	io_names[j + 1] = "output";
-	j += 2;
-
-	if (use_multiport(portdev)) {
-		io_callbacks[j] = control_intr;
-		io_callbacks[j + 1] = NULL;
-		io_names[j] = "control-i";
-		io_names[j + 1] = "control-o";
-
-		for (i = 1; i < nr_ports; i++) {
-			j += 2;
-			io_callbacks[j] = in_intr;
-			io_callbacks[j + 1] = out_intr;
-			io_names[j] = "input";
-			io_names[j + 1] = "output";
-		}
-	}
-	/* Find the queues. */
-	err = virtio_find_vqs(portdev->vdev, nr_queues, vqs,
-			      io_callbacks,
-			      (const char **)io_names, NULL);
-	if (err)
-		goto free;
-
-	j = 0;
-	portdev->in_vqs[0] = vqs[0];
-	portdev->out_vqs[0] = vqs[1];
-	j += 2;
-	if (use_multiport(portdev)) {
-		portdev->c_ivq = vqs[j];
-		portdev->c_ovq = vqs[j + 1];
-
-		for (i = 1; i < nr_ports; i++) {
-			j += 2;
-			portdev->in_vqs[i] = vqs[j];
-			portdev->out_vqs[i] = vqs[j + 1];
-		}
-	}
-	kfree(io_names);
-	kfree(io_callbacks);
-	kfree(vqs);
-
-	return 0;
-
-free:
-	kfree(portdev->out_vqs);
-	kfree(portdev->in_vqs);
-	kfree(io_names);
-	kfree(io_callbacks);
-	kfree(vqs);
-
-	return err;
-}
+#if 0
 
 static const struct file_operations portdev_fops = {
 	.owner = THIS_MODULE,
@@ -1964,47 +1898,53 @@ static void remove_vqs(struct ports_device *portdev)
 
 #endif
 
-static void virtcons_remove(struct virtio_device *vdev)
+static void device_remove(struct virtio_device *vdev)
 {
-#if 0
 	struct ports_device *portdev;
-	struct port *port, *port2;
+	// struct port *port, *port2;
+
+	MTRACE();
 
 	portdev = vdev->priv;
+	vdev->priv = NULL;
 
-	spin_lock_irq(&pdrvdata_lock);
-	list_del(&portdev->list);
-	spin_unlock_irq(&pdrvdata_lock);
+	// spin_lock_irq(&pdrvdata_lock);
+	// list_del(&portdev->list);
+	// spin_unlock_irq(&pdrvdata_lock);
 
 	/* Device is going away, exit any polling for buffers */
 	virtio_break_device(vdev);
-	if (use_multiport(portdev))
-		flush_work(&portdev->control_work);
-	else
-		flush_work(&portdev->config_work);
+
+	// if (use_multiport(portdev))
+	// 	flush_work(&portdev->control_work);
+	// else
+	// 	flush_work(&portdev->config_work);
 
 	/* Disable interrupts for vqs */
 	virtio_reset_device(vdev);
-	/* Finish up work that's lined up */
-	if (use_multiport(portdev))
-		cancel_work_sync(&portdev->control_work);
-	else
-		cancel_work_sync(&portdev->config_work);
 
-	list_for_each_entry_safe(port, port2, &portdev->ports, list)
-		unplug_port(port);
+	// /* Finish up work that's lined up */
+	// if (use_multiport(portdev))
+	// 	cancel_work_sync(&portdev->control_work);
+	// else
+	// 	cancel_work_sync(&portdev->config_work);
 
-	/*
-	 * When yanking out a device, we immediately lose the
-	 * (device-side) queues.  So there's no point in keeping the
-	 * guest side around till we drop our final reference.  This
-	 * also means that any ports which are in an open state will
-	 * have to just stop using the port, as the vqs are going
-	 * away.
-	 */
-	remove_vqs(portdev);
+	// list_for_each_entry_safe(port, port2, &portdev->ports, list)
+	// 	unplug_port(port);
+
+	// /*
+	//  * When yanking out a device, we immediately lose the
+	//  * (device-side) queues.  So there's no point in keeping the
+	//  * guest side around till we drop our final reference.  This
+	//  * also means that any ports which are in an open state will
+	//  * have to just stop using the port, as the vqs are going
+	//  * away.
+	//  */
+	// remove_vqs(portdev);
+
 	kfree(portdev);
-#endif
+
+	MTRACE("ok");
 }
 
 /*
@@ -2015,125 +1955,114 @@ static void virtcons_remove(struct virtio_device *vdev)
  * config space to see how many ports the host has spawned.  We
  * initialize each port found.
  */
-static int virtcons_probe(struct virtio_device *vdev)
+static int device_probe(struct virtio_device *vdev)
 {
-#if 0
 	struct ports_device *portdev;
+	vq_callback_t *io_callbacks[] = {
+		[VIRTIO_TEST_QUEUE_RX     ] = rx_intr,
+		[VIRTIO_TEST_QUEUE_TX     ] = tx_intr,
+		[VIRTIO_TEST_QUEUE_CTRL_RX] = ctrl_rx_intr,
+		[VIRTIO_TEST_QUEUE_CTRL_TX] = ctrl_tx_intr,
+	};
+	const char *io_names[] = {
+		[VIRTIO_TEST_QUEUE_RX     ] = "rx",
+		[VIRTIO_TEST_QUEUE_TX     ] = "tx",
+		[VIRTIO_TEST_QUEUE_CTRL_RX] = "ctrl_rx",
+		[VIRTIO_TEST_QUEUE_CTRL_TX] = "ctrl_tx",
+	};
+	struct virtqueue *vqs[VIRTIO_TEST_QUEUE_MAX];
 	int err;
-	bool multiport;
-	bool early = early_put_chars != NULL;
 
-	/* We only need a config space if features are offered */
-	if (!vdev->config->get &&
-	    (virtio_has_feature(vdev, VIRTIO_CONSOLE_F_SIZE)
-	     || virtio_has_feature(vdev, VIRTIO_CONSOLE_F_MULTIPORT))) {
-		dev_err(&vdev->dev, "%s failure: config access disabled\n",
-			__func__);
-		return -EINVAL;
-	}
+	MTRACE();
 
 	/* Ensure to read early_put_chars now */
 	barrier();
 
 	portdev = kmalloc(sizeof(*portdev), GFP_KERNEL);
-	if (!portdev) {
-		err = -ENOMEM;
-		goto fail;
-	}
+	if (!portdev)
+		return -ENOMEM;
 
 	/* Attach this portdev to this virtio_device, and vice-versa. */
 	portdev->vdev = vdev;
 	vdev->priv = portdev;
 
-	multiport = false;
-	portdev->max_nr_ports = 1;
+	// /* Don't test MULTIPORT at all if we're rproc: not a valid feature! */
+	// if (!is_rproc_serial(vdev) &&
+	//     virtio_cread_feature(vdev, VIRTIO_CONSOLE_F_MULTIPORT,
+	// 			 struct virtio_console_config, max_nr_ports,
+	// 			 &portdev->max_nr_ports) == 0) {
+	// 	if (portdev->max_nr_ports == 0 ||
+	// 	    portdev->max_nr_ports > VIRTCONS_MAX_PORTS) {
+	// 		dev_err(&vdev->dev,
+	// 			"Invalidate max_nr_ports %d",
+	// 			portdev->max_nr_ports);
+	// 		err = -EINVAL;
+	// 		goto free;
+	// 	}
+	// 	multiport = true;
+	// }
 
-	/* Don't test MULTIPORT at all if we're rproc: not a valid feature! */
-	if (!is_rproc_serial(vdev) &&
-	    virtio_cread_feature(vdev, VIRTIO_CONSOLE_F_MULTIPORT,
-				 struct virtio_console_config, max_nr_ports,
-				 &portdev->max_nr_ports) == 0) {
-		if (portdev->max_nr_ports == 0 ||
-		    portdev->max_nr_ports > VIRTCONS_MAX_PORTS) {
-			dev_err(&vdev->dev,
-				"Invalidate max_nr_ports %d",
-				portdev->max_nr_ports);
-			err = -EINVAL;
-			goto free;
-		}
-		multiport = true;
+	/* Find the queues. */
+	err = virtio_find_vqs(portdev->vdev, 3, vqs,
+			      io_callbacks,
+			      io_names, NULL);
+	if (err) {
+		MTRACE("* virtio_find_vqs(): %d", err);
+		goto error_free;
 	}
 
-	err = init_vqs(portdev);
-	if (err < 0) {
-		dev_err(&vdev->dev, "Error %d initializing vqs\n", err);
-		goto free_chrdev;
-	}
-
-	spin_lock_init(&portdev->ports_lock);
-	INIT_LIST_HEAD(&portdev->ports);
-	INIT_LIST_HEAD(&portdev->list);
+	// spin_lock_init(&portdev->ports_lock);
+	// INIT_LIST_HEAD(&portdev->ports);
+	// INIT_LIST_HEAD(&portdev->list);
 
 	virtio_device_ready(portdev->vdev);
 
-	INIT_WORK(&portdev->config_work, &config_work_handler);
-	INIT_WORK(&portdev->control_work, &control_work_handler);
+	// INIT_WORK(&portdev->config_work, &config_work_handler);
+	// INIT_WORK(&portdev->control_work, &control_work_handler);
 
-	if (multiport) {
-		spin_lock_init(&portdev->c_ivq_lock);
-		spin_lock_init(&portdev->c_ovq_lock);
+	// if (multiport) {
+	// 	spin_lock_init(&portdev->c_ivq_lock);
+	// 	spin_lock_init(&portdev->c_ovq_lock);
+	// 	err = fill_queue(portdev->c_ivq, &portdev->c_ivq_lock);
+	// 	if (err < 0) {
+	// 		dev_err(&vdev->dev,
+	// 			"Error allocating buffers for control queue\n");
+	// 		/*
+	// 		 * The host might want to notify mgmt sw about device
+	// 		 * add failure.
+	// 		 */
+	// 		__send_control_msg(portdev, 0xff,
+	// 				   VIRTIO_TEST_DEVICE_READY, 0);
+	// 		/* Device was functional: we need full cleanup. */
+	// 		virtcons_remove(vdev);
+	// 		return err;
+	// 	}
+	// } else {
+	// 	/*
+	// 	 * For backward compatibility: Create a console port
+	// 	 * if we're running on older host.
+	// 	 */
+	// 	add_port(portdev, 0);
+	// }
 
-		err = fill_queue(portdev->c_ivq, &portdev->c_ivq_lock);
-		if (err < 0) {
-			dev_err(&vdev->dev,
-				"Error allocating buffers for control queue\n");
-			/*
-			 * The host might want to notify mgmt sw about device
-			 * add failure.
-			 */
-			__send_control_msg(portdev, 0xff,
-					   VIRTIO_TEST_DEVICE_READY, 0);
-			/* Device was functional: we need full cleanup. */
-			virtcons_remove(vdev);
-			return err;
-		}
-	} else {
-		/*
-		 * For backward compatibility: Create a console port
-		 * if we're running on older host.
-		 */
-		add_port(portdev, 0);
-	}
+	// spin_lock_irq(&pdrvdata_lock);
+	// list_add_tail(&portdev->list, &pdrvdata.portdevs);
+	// spin_unlock_irq(&pdrvdata_lock);
 
-	spin_lock_irq(&pdrvdata_lock);
-	list_add_tail(&portdev->list, &pdrvdata.portdevs);
-	spin_unlock_irq(&pdrvdata_lock);
+	// __send_control_msg(portdev, 0xff,
+	// 		   VIRTIO_TEST_DEVICE_READY, 1);
 
-	__send_control_msg(portdev, 0xff,
-			   VIRTIO_TEST_DEVICE_READY, 1);
-
-	/*
-	 * If there was an early virtio console, assume that there are no
-	 * other consoles. We need to wait until the hvc_alloc matches the
-	 * hvc_instantiate, otherwise tty_open will complain, resulting in
-	 * a "Warning: unable to open an initial console" boot failure.
-	 * Without multiport this is done in add_port above. With multiport
-	 * this might take some host<->guest communication - thus we have to
-	 * wait.
-	 */
-	if (multiport && early)
-		wait_for_completion(&early_console_added);
-
+	MTRACE("ok");
 	return 0;
 
-free_chrdev:
-	// unregister_chrdev(portdev->chr_major, "virtio-portsdev");
-free:
+// free_chrdev:
+// 	// unregister_chrdev(portdev->chr_major, "virtio-portsdev");
+
+error_free:
 	kfree(portdev);
-fail:
+	vdev->priv = portdev;
+	MTRACE("error: %d", err);
 	return err;
-#endif
-	return 0;
 }
 
 #if 0
@@ -2238,24 +2167,26 @@ static const unsigned int features[] = {
 	VIRTIO_TEST_F_MULTIPORT,
 };
 
-static struct virtio_driver virtio_console = {
-	.feature_table = features,
+static struct virtio_driver virtio_lo_test = {
+	.feature_table      = features,
 	.feature_table_size = ARRAY_SIZE(features),
-	.driver.name =	KBUILD_MODNAME,
-	.driver.owner =	THIS_MODULE,
-	.id_table =	id_table,
-	.probe =	virtcons_probe,
-	.remove =	virtcons_remove,
-	// .config_changed = config_intr,
+	.driver.name        = KBUILD_MODNAME,
+	.driver.owner       = THIS_MODULE,
+	.id_table           = id_table,
+	.probe              = device_probe,
+	.remove             = device_remove,
+	.config_changed     = device_config_changed,
 #if 0
 	.freeze =	virtcons_freeze,
 	.restore =	virtcons_restore,
 #endif
 };
 
-static int __init virtio_console_init(void)
+static int __init virtio_lo_test_init(void)
 {
 	int err;
+
+	MTRACE();
 
 	err = class_register(&port_class);
 	if (err) {
@@ -2275,11 +2206,13 @@ static int __init virtio_console_init(void)
 	// INIT_LIST_HEAD(&pdrvdata.consoles);
 	// INIT_LIST_HEAD(&pdrvdata.portdevs);
 
-	err = register_virtio_driver(&virtio_console);
+	err = register_virtio_driver(&virtio_lo_test);
 	if (err < 0) {
 		pr_err("Error %d registering virtio driver\n", err);
 		goto error_unregister_chrdev;
 	}
+
+	MTRACE("ok");
 
 	return 0;
 
@@ -2289,21 +2222,25 @@ error_unregister_chrdev:
 	unregister_chrdev(major, DEVICE_NAME);
 error_class_unregister:
 	class_unregister(&port_class);
+
+	MTRACE("error: %d", err);
+
 	return err;
 }
 
-static void __exit virtio_console_fini(void)
+static void __exit virtio_lo_test_fini(void)
 {
+	MTRACE();
 //	reclaim_dma_bufs();
 
-	unregister_virtio_driver(&virtio_console);
+	unregister_virtio_driver(&virtio_lo_test);
 
 //	debugfs_remove_recursive(pdrvdata.debugfs_dir);
 	unregister_chrdev(major, DEVICE_NAME);
 	class_unregister(&port_class);
 }
-module_init(virtio_console_init);
-module_exit(virtio_console_fini);
+module_init(virtio_lo_test_init);
+module_exit(virtio_lo_test_fini);
 
-MODULE_DESCRIPTION("Virtio console driver");
+MODULE_DESCRIPTION("Virtio test driver");
 MODULE_LICENSE("GPL");
