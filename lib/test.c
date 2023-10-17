@@ -139,6 +139,55 @@ done:
 	return ret;
 }
 
+static int send_notification(struct vlo *vl)
+{
+	struct vlo_buf *req;
+	struct virtio_test_notify *notify;
+	int err;
+	static unsigned int n;
+
+	if (!vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_NOTIFY)) {
+		trace_err("vlo_buf_is_available()");
+		return -1;
+	}
+
+	req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	if (!req) {
+		trace_err("vlo_buf_get()");
+		return -1;
+	}
+
+	trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
+
+	if (req->ion_transmit > 0) {
+		trace_err("not all buffers are writable");
+		err = -1;
+		goto done;
+	}
+
+	if (req->io[0].iov_len < sizeof(struct virtio_test_notify)) {
+		trace_err("first buffer is too small");
+		err = -1;
+		goto done;
+	}
+
+	notify = req->io[0].iov_base;
+	notify->id = n++ % 2;
+
+	vlo_buf_put(req, 0);
+
+	err = vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	if (err)
+		trace_err("vlo_kick()");
+
+	return err;
+
+done:
+	vlo_buf_put(req, 0);
+	vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	return err;
+}
+
 int main(int argc, char **argv)
 {
 	(void)argc;
@@ -146,6 +195,7 @@ int main(int argc, char **argv)
 
 	struct vlo *vl;
 	int err;
+	int n;
 
 	struct virtio_lo_qinfo qinfos[VIRTIO_TEST_QUEUE_MAX] = {
 		{
@@ -194,7 +244,7 @@ int main(int argc, char **argv)
 		}
 
 		unsigned int i;
-		for (i = 0; i < 2; i++) {
+		for (i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
 			struct epoll_event eekick = {
 				.events = EPOLLIN,
 				.data.u32 = i,
@@ -250,13 +300,19 @@ int main(int argc, char **argv)
 			}
 		}
 
-		int n = epoll_wait(efd, events, MAX_EVENTS, -1);
+again:
+		n = epoll_wait(efd, events, MAX_EVENTS, 3000);
 		if (n < 0) {
 			trace_err_p("epoll_wait()");
 			goto error_done;
 		}
 		else if (n == 0) {
-			trace_err("epoll_wait() == 0 ???");
+			err = send_notification(vl);
+			if (err) {
+				trace_err("send_notification()");
+				goto error_done;
+			}
+			goto again;
 		}
 
 		for (i = 0; i < n; i++) {
