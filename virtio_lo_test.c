@@ -46,6 +46,16 @@ struct ports_device {
 	/* The virtio device we're associated with */
 	struct virtio_device *vdev;
 
+	struct virtqueue *rx_vq;
+	struct virtqueue *tx_vq;
+
+#define NOTIFY_BUFFERS_LEN 8
+	struct scatterlist notify_buffers[NOTIFY_BUFFERS_LEN];
+	unsigned int notify_buffers_n;
+	struct virtqueue *notify_vq;
+
+	struct virtqueue *ctrl_vq;
+
 #if 0
 	/* Next portdev in the list, head is in the pdrvdata struct */
 	struct list_head list;
@@ -86,6 +96,80 @@ struct ports_device {
 	struct virtqueue **in_vqs, **out_vqs;
 #endif
 };
+
+static void sg_init_one_page(struct scatterlist *sg, struct page *p)
+{
+	sg_init_table(sg, 1);
+	sg_set_page(sg, p, PAGE_SIZE, 0);
+}
+
+static void notify_queue_fini(struct ports_device *d)
+{
+	MTRACE();
+	while (1) {
+		unsigned int len;
+		struct scatterlist *sg = virtqueue_get_buf(d->notify_vq, &len);
+		if (!sg)
+			break;
+		struct page *p = sg_page(sg);
+		__free_page(p);
+	}
+
+	MTRACE();
+	while (1) {
+		struct scatterlist *sg = virtqueue_detach_unused_buf(d->notify_vq);
+		MTRACE("%p", sg);
+		if (!sg)
+			break;
+		struct page *p = sg_page(sg);
+		__free_page(p);
+	}
+	MTRACE("ok");
+}
+
+static int notify_queue_init(struct ports_device *d)
+{
+	unsigned int i;
+	int ret;
+
+	MTRACE();
+
+	for (i = 0; i < NOTIFY_BUFFERS_LEN; i++) {
+		struct page *p = alloc_page(GFP_KERNEL);
+		struct scatterlist *sg = d->notify_buffers + i;
+		if (!p) {
+			ret = -ENOMEM;
+			MTRACE("* alloc_page()");
+			goto error_free;
+		}
+
+		sg_init_one_page(d->notify_buffers + i, p);
+
+		ret = virtqueue_add_inbuf(d->notify_vq, sg, 1, sg, GFP_KERNEL);
+		if (ret < 0) {
+			MTRACE("* virtqueue_add_inbuf(): %d, buffer %u", ret, i);
+			__free_page(p);
+			if (i <= 2) {
+				dev_err(&d->vdev->dev, "virtqueue_add_inbuf(): %d, buffer %u", ret, i);
+				goto error_free;
+			}
+			break;
+		}
+	}
+
+	d->notify_buffers_n = i;
+	MTRACE("created %u buffers", i);
+
+	virtqueue_kick(d->notify_vq);
+
+	MTRACE("ok");
+	return 0;
+
+error_free:
+	notify_queue_fini(d);
+	MTRACE("ret: %d", ret);
+	return ret;
+}
 
 #if 0
 
@@ -138,32 +222,6 @@ struct console {
 // FIXME: console
 // static DEFINE_IDA(vtermno_ida);
 
-struct port_buffer {
-	char *buf;
-
-	/* size of the buffer in *buf above */
-	size_t size;
-
-	/* used length of the buffer */
-	size_t len;
-	/* offset in the buf from which to consume data */
-	size_t offset;
-
-	/* DMA address of buffer */
-	dma_addr_t dma;
-
-	/* Device we got DMA memory from */
-	struct device *dev;
-
-	/* List of pending dma buffers to free */
-	struct list_head list;
-
-	/* If sgpages == 0 then buf is used */
-	unsigned int sgpages;
-
-	/* sg is used if spages > 0. sg must be the last in is struct */
-	struct scatterlist sg[];
-};
 
 struct port_stats {
 	unsigned long bytes_sent, bytes_received, bytes_discarded;
@@ -1848,7 +1906,7 @@ static void tx_intr(struct virtqueue *vq)
 #endif
 }
 
-static void ctrl_rx_intr(struct virtqueue *vq)
+static void ctrl_intr(struct virtqueue *vq)
 {
 	MTRACE();
 #if 0
@@ -1859,7 +1917,7 @@ static void ctrl_rx_intr(struct virtqueue *vq)
 #endif
 }
 
-static void ctrl_tx_intr(struct virtqueue *vq)
+static void notify_intr(struct virtqueue *vq)
 {
 	MTRACE();
 }
@@ -1906,7 +1964,6 @@ static void device_remove(struct virtio_device *vdev)
 	MTRACE();
 
 	portdev = vdev->priv;
-	vdev->priv = NULL;
 
 	// spin_lock_irq(&pdrvdata_lock);
 	// list_del(&portdev->list);
@@ -1922,6 +1979,9 @@ static void device_remove(struct virtio_device *vdev)
 
 	/* Disable interrupts for vqs */
 	virtio_reset_device(vdev);
+
+	MTRACE("notify_queue_fini()");
+	notify_queue_fini(portdev);
 
 	// /* Finish up work that's lined up */
 	// if (use_multiport(portdev))
@@ -1943,6 +2003,7 @@ static void device_remove(struct virtio_device *vdev)
 	// remove_vqs(portdev);
 
 	kfree(portdev);
+	vdev->priv = NULL;
 
 	MTRACE("ok");
 }
@@ -1959,16 +2020,16 @@ static int device_probe(struct virtio_device *vdev)
 {
 	struct ports_device *portdev;
 	vq_callback_t *io_callbacks[] = {
-		[VIRTIO_TEST_QUEUE_RX     ] = rx_intr,
-		[VIRTIO_TEST_QUEUE_TX     ] = tx_intr,
-		[VIRTIO_TEST_QUEUE_CTRL_RX] = ctrl_rx_intr,
-		[VIRTIO_TEST_QUEUE_CTRL_TX] = ctrl_tx_intr,
+		[VIRTIO_TEST_QUEUE_RX]     = rx_intr,
+		[VIRTIO_TEST_QUEUE_TX]     = tx_intr,
+		[VIRTIO_TEST_QUEUE_NOTIFY] = notify_intr,
+		[VIRTIO_TEST_QUEUE_CTRL]   = ctrl_intr,
 	};
 	const char *io_names[] = {
-		[VIRTIO_TEST_QUEUE_RX     ] = "rx",
-		[VIRTIO_TEST_QUEUE_TX     ] = "tx",
-		[VIRTIO_TEST_QUEUE_CTRL_RX] = "ctrl_rx",
-		[VIRTIO_TEST_QUEUE_CTRL_TX] = "ctrl_tx",
+		[VIRTIO_TEST_QUEUE_RX]     = "rx",
+		[VIRTIO_TEST_QUEUE_TX]     = "tx",
+		[VIRTIO_TEST_QUEUE_NOTIFY] = "notify",
+		[VIRTIO_TEST_QUEUE_CTRL]   = "ctrl",
 	};
 	struct virtqueue *vqs[VIRTIO_TEST_QUEUE_MAX];
 	int err;
@@ -1986,28 +2047,23 @@ static int device_probe(struct virtio_device *vdev)
 	portdev->vdev = vdev;
 	vdev->priv = portdev;
 
-	// /* Don't test MULTIPORT at all if we're rproc: not a valid feature! */
-	// if (!is_rproc_serial(vdev) &&
-	//     virtio_cread_feature(vdev, VIRTIO_CONSOLE_F_MULTIPORT,
-	// 			 struct virtio_console_config, max_nr_ports,
-	// 			 &portdev->max_nr_ports) == 0) {
-	// 	if (portdev->max_nr_ports == 0 ||
-	// 	    portdev->max_nr_ports > VIRTCONS_MAX_PORTS) {
-	// 		dev_err(&vdev->dev,
-	// 			"Invalidate max_nr_ports %d",
-	// 			portdev->max_nr_ports);
-	// 		err = -EINVAL;
-	// 		goto free;
-	// 	}
-	// 	multiport = true;
-	// }
-
 	/* Find the queues. */
 	err = virtio_find_vqs(portdev->vdev, 3, vqs,
 			      io_callbacks,
 			      io_names, NULL);
 	if (err) {
 		MTRACE("* virtio_find_vqs(): %d", err);
+		goto error_free;
+	}
+
+	portdev->notify_vq = vqs[VIRTIO_TEST_QUEUE_NOTIFY];
+	portdev->ctrl_vq   = vqs[VIRTIO_TEST_QUEUE_CTRL];
+	portdev->rx_vq     = vqs[VIRTIO_TEST_QUEUE_RX];
+	portdev->tx_vq     = vqs[VIRTIO_TEST_QUEUE_TX];
+
+	err = notify_queue_init(portdev);
+	if (err) {
+		MTRACE("notify_queue_init()");
 		goto error_free;
 	}
 
