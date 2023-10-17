@@ -9,16 +9,13 @@
 #define TRACE_FILE "test.c"
 #include "trace.h"
 
-static const unsigned int RECEIVEQ = 0; // from device to driver
-static const unsigned int TRANSMITQ = 1; // from driver to device
-// static const unsigned int EVENT = 2;
-
 static const char *q_name(int q)
 {
 	switch (q) {
-	case 0: return "RECEIVE";
-	case 1: return "TRANSMIT";
-	case 2: return "EVENT";
+	case VIRTIO_TEST_QUEUE_RX:     return "RX";
+	case VIRTIO_TEST_QUEUE_TX:     return "TX";
+	case VIRTIO_TEST_QUEUE_NOTIFY: return "NOTIFY";
+	case VIRTIO_TEST_QUEUE_CTRL:   return "CTRL";
 	default: return "???";
 	}
 }
@@ -28,7 +25,6 @@ static bool serv_has_to_receive(void)
 {
 	return false;
 }
-
 
 static int serv_receive(struct vlo_buf *req)
 {
@@ -86,7 +82,7 @@ static int receive1(struct vlo *vl)
 
 	// trace("*** RECEIVE");
 
-	struct vlo_buf *req = vlo_buf_get(vl, RECEIVEQ);
+	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_RX);
 	if (!req) {
 		trace_err("vlo_buf_get()");
 		return -1;
@@ -121,7 +117,7 @@ static int transmit1(struct vlo *vl)
 
 	// trace("*** TRANSMIT");
 
-	struct vlo_buf *req = vlo_buf_get(vl, TRANSMITQ);
+	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_TX);
 	if (!req) {
 		trace_err("vlo_buf_get()");
 		return -1;
@@ -151,8 +147,10 @@ int main(int argc, char **argv)
 	struct vlo *vl;
 	int err;
 
-#define NQUEUES 3
-	struct virtio_lo_qinfo qinfos[NQUEUES] = {
+	struct virtio_lo_qinfo qinfos[VIRTIO_TEST_QUEUE_MAX] = {
+		{
+			.size = 16,
+		},
 		{
 			.size = 16,
 		},
@@ -168,7 +166,7 @@ int main(int argc, char **argv)
 		.something = 3,
 	};
 
-	vl = vlo_init(VIRTIO_ID_TEST, 0x1af4, qinfos, NQUEUES, &config, sizeof(config));
+	vl = vlo_init(VIRTIO_ID_TEST, 0x1af4, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
 	if (!vl) {
 		trace_err("vlo_init()");
 		goto error;
@@ -217,7 +215,7 @@ int main(int argc, char **argv)
 		trace("BEGIN");
 
 		// guest to host
-		if (vlo_buf_is_available(vl, TRANSMITQ)) {
+		if (vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_TX)) {
 
 			do {
 				err = transmit1(vl);
@@ -225,9 +223,9 @@ int main(int argc, char **argv)
 					trace_err("transmit1()");
 					goto error_done;
 				}
-			} while (vlo_buf_is_available(vl, TRANSMITQ));
+			} while (vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_TX));
 
-			err = vlo_kick(vl, TRANSMITQ);
+			err = vlo_kick(vl, VIRTIO_TEST_QUEUE_TX);
 			if (err) {
 				trace_err("vlo_kick()");
 				goto error_done;
@@ -235,7 +233,7 @@ int main(int argc, char **argv)
 		}
 
 		// host to guest
-		if (serv_has_to_receive() && vlo_buf_is_available(vl, RECEIVEQ)) {
+		if (serv_has_to_receive() && vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_RX)) {
 
 			do {
 				err = receive1(vl);
@@ -243,9 +241,9 @@ int main(int argc, char **argv)
 					trace_err("receive1()");
 					goto error_done;
 				}
-			} while (serv_has_to_receive() && vlo_buf_is_available(vl, RECEIVEQ));
+			} while (serv_has_to_receive() && vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_RX));
 
-			err = vlo_kick(vl, RECEIVEQ);
+			err = vlo_kick(vl, VIRTIO_TEST_QUEUE_RX);
 			if (err) {
 				trace_err("vlo_kick()");
 				goto error_done;
