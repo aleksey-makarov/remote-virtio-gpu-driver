@@ -46,6 +46,9 @@ struct ports_device {
 	/* The virtio device we're associated with */
 	struct virtio_device *vdev;
 
+	struct workqueue_struct *wq;
+	struct work_struct work;
+
 	struct virtqueue *rx_vq;
 	struct virtqueue *tx_vq;
 
@@ -96,6 +99,17 @@ struct ports_device {
 	struct virtqueue **in_vqs, **out_vqs;
 #endif
 };
+
+static inline struct ports_device *work_to_ports_device(struct work_struct *w)
+{
+	return container_of(w, struct ports_device, work);
+}
+
+static void work_func(struct work_struct *work)
+{
+	MTRACE("hello from work function");
+	// struct ports_device *portdev = work_to_ports_device(struct work_struct *w)
+}
 
 static void sg_init_one_page(struct scatterlist *sg, struct page *p)
 {
@@ -1919,7 +1933,9 @@ static void ctrl_intr(struct virtqueue *vq)
 
 static void notify_intr(struct virtqueue *vq)
 {
-	MTRACE();
+	struct ports_device *portdev = vq->vdev->priv;
+	bool ret = queue_work(portdev->wq, &portdev->work);
+	MTRACE("queuing work: %s", ret ? "true" : "false");
 }
 
 static void device_config_changed(struct virtio_device *vdev)
@@ -1961,9 +1977,9 @@ static void device_remove(struct virtio_device *vdev)
 	struct ports_device *portdev;
 	// struct port *port, *port2;
 
-	MTRACE();
-
 	portdev = vdev->priv;
+
+	MTRACE("portdev=%p", portdev);
 
 	// spin_lock_irq(&pdrvdata_lock);
 	// list_del(&portdev->list);
@@ -1980,8 +1996,11 @@ static void device_remove(struct virtio_device *vdev)
 	/* Disable interrupts for vqs */
 	virtio_reset_device(vdev);
 
+	destroy_workqueue(portdev->wq);
+
 	MTRACE("notify_queue_fini()");
 	notify_queue_fini(portdev);
+
 
 	// /* Finish up work that's lined up */
 	// if (use_multiport(portdev))
@@ -2018,6 +2037,7 @@ static void device_remove(struct virtio_device *vdev)
  */
 static int device_probe(struct virtio_device *vdev)
 {
+	static unsigned int serial = 0;
 	struct ports_device *portdev;
 	vq_callback_t *io_callbacks[] = {
 		[VIRTIO_TEST_QUEUE_RX]     = rx_intr,
@@ -2067,6 +2087,16 @@ static int device_probe(struct virtio_device *vdev)
 		goto error_free;
 	}
 
+	// MTRACE("virtio-lo-test-%p (should be 0x%lx)", portdev, (long unsigned int)portdev);
+	portdev->wq = alloc_ordered_workqueue("virtio-lo-test-%u", 0, serial++);
+	if (!portdev->wq) {
+		MTRACE("alloc_ordered_workqueue()");
+		goto error_notify_queue_fini;
+
+	}
+
+	INIT_WORK(&portdev->work, work_func);
+
 	// spin_lock_init(&portdev->ports_lock);
 	// INIT_LIST_HEAD(&portdev->ports);
 	// INIT_LIST_HEAD(&portdev->list);
@@ -2113,10 +2143,11 @@ static int device_probe(struct virtio_device *vdev)
 
 // free_chrdev:
 // 	// unregister_chrdev(portdev->chr_major, "virtio-portsdev");
-
+error_notify_queue_fini:
+	notify_queue_fini(portdev);
 error_free:
 	kfree(portdev);
-	vdev->priv = portdev;
+	vdev->priv = NULL;
 	MTRACE("error: %d", err);
 	return err;
 }
