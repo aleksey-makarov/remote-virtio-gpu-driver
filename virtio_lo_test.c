@@ -105,10 +105,52 @@ static inline struct ports_device *work_to_ports_device(struct work_struct *w)
 	return container_of(w, struct ports_device, work);
 }
 
+static void notify_start(struct ports_device *d)
+{
+	(void)d;
+	MTRACE();
+}
+
+static void notify_stop(struct ports_device *d)
+{
+	(void)d;
+	MTRACE();
+}
+
 static void work_func(struct work_struct *work)
 {
-	MTRACE("hello from work function");
-	// struct ports_device *portdev = work_to_ports_device(struct work_struct *w)
+	struct ports_device *d = work_to_ports_device(work);
+	int err;
+
+	while (1) {
+		unsigned int len;
+		struct scatterlist *sg = virtqueue_get_buf(d->notify_vq, &len);
+		if (!sg)
+			break;
+
+		struct virtio_test_notify *notify = sg_virt(sg);
+		// MTRACE("notify=%d", notify->id);
+		switch(notify->id) {
+		case VIRTIO_TEST_QUEUE_NOTIFY_START:
+			notify_start(d);
+			break;
+		case VIRTIO_TEST_QUEUE_NOTIFY_STOP:
+			notify_stop(d);
+			break;
+		default:
+			MTRACE("???");
+			break;
+		}
+
+		err = virtqueue_add_inbuf(d->notify_vq, sg, 1, sg, GFP_KERNEL);
+		if (err < 0) {
+			MTRACE("* virtqueue_add_inbuf(): %d", err);
+			__free_page(sg_page(sg));
+			continue;
+		}
+	}
+
+	virtqueue_kick(d->notify_vq);
 }
 
 static void sg_init_one_page(struct scatterlist *sg, struct page *p)
@@ -1935,7 +1977,7 @@ static void notify_intr(struct virtqueue *vq)
 {
 	struct ports_device *portdev = vq->vdev->priv;
 	bool ret = queue_work(portdev->wq, &portdev->work);
-	MTRACE("queuing work: %s", ret ? "true" : "false");
+	MTRACE("%s", ret ? "true" : "false");
 }
 
 static void device_config_changed(struct virtio_device *vdev)
