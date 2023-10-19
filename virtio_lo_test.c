@@ -49,14 +49,32 @@ struct ports_device {
 	struct workqueue_struct *wq;
 	struct work_struct work;
 
+	/*
+	 * RX
+	 */
+#define RX_BUFFERS_LEN 8
+#define RX_BUFFERS_MIN 2
+	struct scatterlist rx_buffers[RX_BUFFERS_LEN];
+	unsigned int rx_buffers_n;
 	struct virtqueue *rx_vq;
+
+	/*
+	 * TX
+	 */
 	struct virtqueue *tx_vq;
 
-#define NOTIFY_BUFFERS_LEN 8
+	/*
+	 * NOTIFY
+	 */
+#define NOTIFY_BUFFERS_LEN 24
+#define NOTIFY_BUFFERS_MIN 4
 	struct scatterlist notify_buffers[NOTIFY_BUFFERS_LEN];
 	unsigned int notify_buffers_n;
 	struct virtqueue *notify_vq;
 
+	/*
+	 * CTRL
+	 */
 	struct virtqueue *ctrl_vq;
 
 #if 0
@@ -117,6 +135,13 @@ static void notify_stop(struct ports_device *d)
 	MTRACE();
 }
 
+static void receive(struct ports_device *d, void *data, unsigned int len)
+{
+	(void)d;
+	int lenx = min(16, (int)len);
+	MTRACE("%*pE (%u)", lenx, data, len);
+}
+
 static void work_func(struct work_struct *work)
 {
 	struct ports_device *d = work_to_ports_device(work);
@@ -129,7 +154,6 @@ static void work_func(struct work_struct *work)
 			break;
 
 		struct virtio_test_notify *notify = sg_virt(sg);
-		// MTRACE("notify=%d", notify->id);
 		switch(notify->id) {
 		case VIRTIO_TEST_QUEUE_NOTIFY_START:
 			notify_start(d);
@@ -144,13 +168,41 @@ static void work_func(struct work_struct *work)
 
 		err = virtqueue_add_inbuf(d->notify_vq, sg, 1, sg, GFP_KERNEL);
 		if (err < 0) {
-			MTRACE("* virtqueue_add_inbuf(): %d", err);
+			MTRACE("* notify virtqueue_add_inbuf(): %d", err);
 			__free_page(sg_page(sg));
+			if (--d->notify_buffers_n < NOTIFY_BUFFERS_MIN) {
+				// FIXME: should stop
+				MTRACE("* critical number of notify buffers: %u", d->notify_buffers_n);
+			}
 			continue;
 		}
 	}
 
 	virtqueue_kick(d->notify_vq);
+
+	while (1) {
+		unsigned int len;
+		struct scatterlist *sg = virtqueue_get_buf(d->rx_vq, &len);
+		if (!sg)
+			break;
+
+		void *rx = sg_virt(sg);
+		receive(d, rx, len);
+
+		err = virtqueue_add_inbuf(d->rx_vq, sg, 1, sg, GFP_KERNEL);
+		if (err < 0) {
+			MTRACE("* rx virtqueue_add_inbuf(): %d", err);
+			__free_page(sg_page(sg));
+			if (--d->rx_buffers_n < RX_BUFFERS_MIN) {
+				// FIXME: should stop
+				MTRACE("* critical number of rx buffers: %u", d->rx_buffers_n);
+			}
+			continue;
+		}
+	}
+
+	virtqueue_kick(d->rx_vq);
+
 }
 
 static void sg_init_one_page(struct scatterlist *sg, struct page *p)
@@ -159,72 +211,110 @@ static void sg_init_one_page(struct scatterlist *sg, struct page *p)
 	sg_set_page(sg, p, PAGE_SIZE, 0);
 }
 
-static void notify_queue_fini(struct ports_device *d)
+static void queue_fini(struct virtqueue *q)
 {
-	// MTRACE();
 	while (1) {
 		unsigned int len;
-		struct scatterlist *sg = virtqueue_get_buf(d->notify_vq, &len);
+		struct scatterlist *sg = virtqueue_get_buf(q, &len);
 		if (!sg)
 			break;
 		struct page *p = sg_page(sg);
 		__free_page(p);
 	}
 
-	// MTRACE();
 	while (1) {
-		struct scatterlist *sg = virtqueue_detach_unused_buf(d->notify_vq);
-		// MTRACE("%p", sg);
+		struct scatterlist *sg = virtqueue_detach_unused_buf(q);
 		if (!sg)
 			break;
 		struct page *p = sg_page(sg);
 		__free_page(p);
 	}
-	// MTRACE("ok");
 }
 
-static int notify_queue_init(struct ports_device *d)
+static void notify_queue_fini(struct ports_device *d)
+{
+	MTRACE();
+	queue_fini(d->notify_vq);
+}
+
+static void rx_queue_fini(struct ports_device *d)
+{
+	MTRACE();
+	queue_fini(d->rx_vq);
+}
+
+static int queue_init(struct virtqueue *q, struct scatterlist *sgs, unsigned int sgs_len)
 {
 	unsigned int i;
 	int ret;
 
-	MTRACE();
+	for (i = 0; i < sgs_len; i++) {
+		struct scatterlist *sg = sgs + i;
 
-	for (i = 0; i < NOTIFY_BUFFERS_LEN; i++) {
 		struct page *p = alloc_page(GFP_KERNEL);
-		struct scatterlist *sg = d->notify_buffers + i;
 		if (!p) {
 			ret = -ENOMEM;
 			MTRACE("* alloc_page()");
 			goto error_free;
 		}
 
-		sg_init_one_page(d->notify_buffers + i, p);
+		sg_init_one_page(sg, p);
 
-		ret = virtqueue_add_inbuf(d->notify_vq, sg, 1, sg, GFP_KERNEL);
+		ret = virtqueue_add_inbuf(q, sg, 1, sg, GFP_KERNEL);
 		if (ret < 0) {
-			MTRACE("* virtqueue_add_inbuf(): %d, buffer %u", ret, i);
 			__free_page(p);
-			if (i <= 2) {
-				dev_err(&d->vdev->dev, "virtqueue_add_inbuf(): %d, buffer %u", ret, i);
-				goto error_free;
-			}
+			MTRACE("* virtqueue_add_inbuf(): %d, buffer %u", ret, i);
+			if (i == 0)
+				goto error;
 			break;
 		}
 	}
 
-	d->notify_buffers_n = i;
+	ret = i;
 	MTRACE("created %u buffers", i);
 
-	virtqueue_kick(d->notify_vq);
+	virtqueue_kick(q);
 
 	MTRACE("ok");
-	return 0;
+	return ret;
 
 error_free:
-	notify_queue_fini(d);
+	queue_fini(q);
+error:
 	MTRACE("ret: %d", ret);
 	return ret;
+}
+
+static int notify_queue_init(struct ports_device *d)
+{
+	MTRACE();
+	int ret = queue_init(d->notify_vq, d->notify_buffers, NOTIFY_BUFFERS_LEN);
+	if (ret < 0)
+		return ret;
+	if (ret < NOTIFY_BUFFERS_MIN) {
+		dev_err(&d->vdev->dev, "virtqueue_add_inbuf(): %d", ret);
+		MTRACE("");
+		queue_fini(d->notify_vq);
+		return -ENODEV;
+	}
+	d->notify_buffers_n = ret;
+	return 0;
+}
+
+static int rx_queue_init(struct ports_device *d)
+{
+	MTRACE();
+	int ret = queue_init(d->rx_vq, d->rx_buffers, RX_BUFFERS_LEN);
+	if (ret < 0)
+		return ret;
+	if (ret < RX_BUFFERS_MIN) {
+		dev_err(&d->vdev->dev, "virtqueue_add_inbuf(): %d", ret);
+		MTRACE("");
+		queue_fini(d->rx_vq);
+		return -ENODEV;
+	}
+	d->rx_buffers_n = ret;
+	return 0;
 }
 
 #if 0
@@ -1895,11 +1985,11 @@ static void config_work_handler(struct work_struct *work)
 
 #endif
 
+#if 0
 static void rx_intr(struct virtqueue *vq)
 {
 	MTRACE();
 
-#if 0
 	struct port *port;
 	unsigned long flags;
 
@@ -1943,42 +2033,41 @@ static void rx_intr(struct virtqueue *vq)
 //	if (is_console_port(port) && hvc_poll(port->cons.hvc))
 //		hvc_kick();
 
-#endif
 }
-
-static void tx_intr(struct virtqueue *vq)
-{
-	MTRACE();
-#if 0
-	struct port *port;
-
-	port = find_port_by_vq(vq->vdev->priv, vq);
-	if (!port) {
-		flush_bufs(vq, false);
-		return;
-	}
-
-	wake_up_interruptible(&port->waitqueue);
 #endif
-}
 
-static void ctrl_intr(struct virtqueue *vq)
-{
-	MTRACE();
-#if 0
-	struct ports_device *portdev;
-
-	portdev = vq->vdev->priv;
-	schedule_work(&portdev->control_work);
-#endif
-}
-
-static void notify_intr(struct virtqueue *vq)
+static inline void intr(struct virtqueue *vq)
 {
 	struct ports_device *portdev = vq->vdev->priv;
 	bool ret = queue_work(portdev->wq, &portdev->work);
 	MTRACE("%s", ret ? "true" : "false");
 }
+
+static void rx_intr(struct virtqueue *vq)
+{
+	MTRACE();
+	intr(vq);
+}
+
+static void tx_intr(struct virtqueue *vq)
+{
+	MTRACE();
+	intr(vq);
+}
+
+static void notify_intr(struct virtqueue *vq)
+{
+	MTRACE();
+	intr(vq);
+}
+
+static void ctrl_intr(struct virtqueue *vq)
+{
+	MTRACE();
+	intr(vq);
+}
+
+
 
 static void device_config_changed(struct virtio_device *vdev)
 {
@@ -2042,6 +2131,7 @@ static void device_remove(struct virtio_device *vdev)
 
 	MTRACE("notify_queue_fini()");
 	notify_queue_fini(portdev);
+	rx_queue_fini(portdev);
 
 
 	// /* Finish up work that's lined up */
@@ -2129,11 +2219,17 @@ static int device_probe(struct virtio_device *vdev)
 		goto error_free;
 	}
 
+	err = rx_queue_init(portdev);
+	if (err) {
+		MTRACE("rx_queue_init()");
+		goto error_notify_queue_fini;
+	}
+
 	// MTRACE("virtio-lo-test-%p (should be 0x%lx)", portdev, (long unsigned int)portdev);
 	portdev->wq = alloc_ordered_workqueue("virtio-lo-test-%u", 0, serial++);
 	if (!portdev->wq) {
 		MTRACE("alloc_ordered_workqueue()");
-		goto error_notify_queue_fini;
+		goto error_rx_queue_fini;
 
 	}
 
@@ -2185,6 +2281,8 @@ static int device_probe(struct virtio_device *vdev)
 
 // free_chrdev:
 // 	// unregister_chrdev(portdev->chr_major, "virtio-portsdev");
+error_rx_queue_fini:
+	rx_queue_fini(portdev);
 error_notify_queue_fini:
 	notify_queue_fini(portdev);
 error_free:
