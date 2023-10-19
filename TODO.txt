@@ -1,3 +1,5 @@
 - Remove the unneсessary 'lo_driver' level
 - use spin_lock() instead of _irqsave() as there is no interrupts
 - Driver should not wait for the end of initialization
+
+- If initialization of the driver module fails, the application is locked
