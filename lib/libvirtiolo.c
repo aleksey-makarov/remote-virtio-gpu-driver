@@ -161,29 +161,6 @@ struct vlo *vlo_init(
 		goto error_close;
 	}
 
-
-
-#if 0
-struct vlo_vring {
-	struct vring vring;
-	int kick_fd;
-	uint16_t last_avail_idx;
-};
-
-struct vlo {
-	int fd;
-	int config_fd;
-
-	unsigned int idx;
-
-	unsigned int config_size;
-
-	unsigned int vringsn;
-	struct vlo_vring vrings[];
-};
-#endif
-
-
 	for (i = 0; i < qinfosn; i++) {
 		ret->vrings[i].kick_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 		if (ret->vrings[i].kick_fd == -1) {
