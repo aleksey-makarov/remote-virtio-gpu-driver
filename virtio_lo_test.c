@@ -146,7 +146,9 @@ static void work_func(struct work_struct *work)
 {
 	struct ports_device *d = work_to_ports_device(work);
 	int err;
+	bool kick;
 
+	kick = false;
 	while (1) {
 		unsigned int len;
 		struct scatterlist *sg = virtqueue_get_buf(d->notify_vq, &len);
@@ -176,10 +178,13 @@ static void work_func(struct work_struct *work)
 			}
 			continue;
 		}
+		kick = true;
 	}
 
-	virtqueue_kick(d->notify_vq);
+	if (kick)
+		virtqueue_kick(d->notify_vq);
 
+	kick = false;
 	while (1) {
 		unsigned int len;
 		struct scatterlist *sg = virtqueue_get_buf(d->rx_vq, &len);
@@ -199,10 +204,11 @@ static void work_func(struct work_struct *work)
 			}
 			continue;
 		}
+		kick = true;
 	}
 
-	virtqueue_kick(d->rx_vq);
-
+	if (kick)
+		virtqueue_kick(d->rx_vq);
 }
 
 static void sg_init_one_page(struct scatterlist *sg, struct page *p)
