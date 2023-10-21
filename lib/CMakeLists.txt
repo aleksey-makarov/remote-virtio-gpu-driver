@@ -23,7 +23,7 @@ target_link_libraries(test_console_receive PRIVATE virtiolo)
 add_executable(test_console_send test_console_send.c)
 target_link_libraries(test_console_send PRIVATE virtiolo)
 
-add_executable(test test.c)
+add_executable(test test.c epoll_scheduler.c)
 target_link_libraries(test PRIVATE virtiolo)
 
 include(GNUInstallDirs)
