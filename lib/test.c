@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <sys/timerfd.h>
 #include <assert.h>
 
 #include "test.h"
@@ -226,10 +227,16 @@ int main(int argc, char **argv)
 	sleep(1);
 	trace("...done");
 
+	int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+	if (timer_fd < 0) {
+		trace_err_p("timerfd_create()");
+		goto error_virtio_done;
+	}
+
 	int efd = epoll_create(1);
 	if (efd == -1) {
 		trace_err_p("epoll_create()");
-		goto error_virtio_done;
+		goto error_close_timer_fd;
 	}
 
 	{
@@ -237,10 +244,17 @@ int main(int argc, char **argv)
 			.events = EPOLLIN,
 			.data.u32 = 0xff,
 		};
+
 		err = epoll_ctl(efd, EPOLL_CTL_ADD, vlo_epoll_get_config(vl), &eeconfig);
 		if (err) {
 			trace_err_p("epoll_ctl(config)");
-			goto error_epoll_free;
+			goto error_close_efd;
+		}
+
+		err = epoll_ctl(efd, EPOLL_CTL_ADD, vlo_epoll_get_config(vl), &eeconfig);
+		if (err) {
+			trace_err_p("epoll_ctl(config)");
+			goto error_close_efd;
 		}
 
 		unsigned int i;
@@ -252,7 +266,7 @@ int main(int argc, char **argv)
 			err = epoll_ctl(efd, EPOLL_CTL_ADD, vlo_epoll_get_kick(vl, i), &eekick);
 			if (err) {
 				trace_err_p("epoll_ctl(kick)");
-				goto error_epoll_free;
+				goto error_close_efd;
 			}
 		}
 	}
@@ -301,7 +315,7 @@ int main(int argc, char **argv)
 		}
 
 again:
-		n = epoll_wait(efd, events, MAX_EVENTS, 3000);
+		n = epoll_wait(efd, events, MAX_EVENTS, -1);
 		if (n < 0) {
 			trace_err_p("epoll_wait()");
 			goto error_done;
@@ -354,8 +368,10 @@ again:
 	exit(EXIT_SUCCESS);
 
 error_done:
-error_epoll_free:
+error_close_efd:
 	close(efd);
+error_close_timer_fd:
+	close(timer_fd);
 error_virtio_done:
 	vlo_done(vl);
 error:
