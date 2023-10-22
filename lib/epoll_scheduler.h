@@ -10,7 +10,7 @@
 
 struct es_thread {
 
-	void *ctx;
+	void *ctxt;
 	int fd;
 	uint32_t events;
 
@@ -23,19 +23,19 @@ struct es_thread {
 	 *     by the time test() returns ES_WAIT `events` should be set
 	 * - any negative vaule to signal error
 	 */
-	int (*test)(void *ctx);
+	int (*test)(void *ctxt);
 
 	/*
 	 * Returns - any non-negative value to proceed
 	 *         - any negative vaule to signal error
 	 */
-	int (*go)(uint32_t events, void *ctx);
+	int (*go)(uint32_t events, void *ctxt);
 
 	/*
 	 * Called if any of the threads signalls error
 	 * or if this thread exits.
 	 */
-	void (*done)(void *ctx);
+	void (*done)(void *ctxt);
 
 	/*
 	 * Private to epoll_scheduler, don't touch

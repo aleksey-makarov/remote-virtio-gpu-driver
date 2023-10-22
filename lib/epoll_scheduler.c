@@ -28,7 +28,7 @@ static void error_all_done(void)
 	for (n = 0; n < data_len; n++) {
 		if (!data[n]->done)
 			continue;
-		data[n]->done(data[n]->ctx);
+		data[n]->done(data[n]->ctxt);
 	}
 	free(data);
 	data = NULL;
@@ -99,7 +99,7 @@ int es_schedule(void)
 		unsigned int deleted = 0;
 		for (n = 0; n < data_len; n++) {
 			struct es_thread *th = data[n];
-			ret = th->test(th->ctx);
+			ret = th->test(th->ctxt);
 			if (ret == ES_DONE || ret < 0) {
 				goto done;
 			} else if (ret == ES_EXIT) {
@@ -109,7 +109,7 @@ int es_schedule(void)
 					goto done;
 				}
 				if (th->done)
-					th->done(th->ctx);
+					th->done(th->ctxt);
 				data[n] = NULL;
 				deleted++;
 			} else {
@@ -139,7 +139,7 @@ int es_schedule(void)
 		for (i = 0; i < ret; i++) {
 			struct es_thread *th = data[events[i].data.u32];
 			if (th->go)
-				th->go(events[i].events, th->ctx);
+				th->go(events[i].events, th->ctxt);
 		}
 
 		if (deleted) {

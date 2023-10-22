@@ -6,6 +6,7 @@
 
 #include "test.h"
 #include "libvirtiolo.h"
+#include "epoll_scheduler.h"
 
 #define TRACE_FILE "test.c"
 #include "trace.h"
