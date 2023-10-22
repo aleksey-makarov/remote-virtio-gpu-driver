@@ -9,6 +9,8 @@
 
 #define DATA_INITIAL_CAPACITY 16
 
+// FIXME: don't use static, allocate context for this library
+
 static struct es_thread **data = NULL;
 static unsigned int data_len = 0;
 static unsigned int data_capacity = 0;
@@ -88,6 +90,7 @@ int es_schedule(void)
 	int i;
 	int ret = 0;
 
+// FIXME: should be DATA_INITIAL_CAPACITY
 #define MAX_EVENTS 10
 	struct epoll_event events[MAX_EVENTS];
 
