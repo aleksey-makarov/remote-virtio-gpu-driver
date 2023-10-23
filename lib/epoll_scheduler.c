@@ -1,4 +1,5 @@
 #include "epoll_scheduler.h"
+#define TRACE_FILE "epoll_scheduler.c"
 #include "trace.h"
 
 #include <stdlib.h>
