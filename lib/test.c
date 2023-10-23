@@ -227,88 +227,130 @@ struct ctxt {
 
 };
 
+static struct ctxt ctxt;
+
 /*
  * Config
  */
-static int  config_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
-static int  config_go(uint32_t events, void *ctxt)
+static int  config_test(void *vctxt)
 {
-	(void)ctxt;
+	(void)vctxt;
+	return ES_WAIT;
+}
+
+static int  config_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
 	(void)events;
 	trace();
 	return 0;
 }
-static void config_done(void *ctxt) { (void)ctxt; }
+
+static void config_done(void *vctxt) { (void)vctxt; }
 
 /*
  * RX
  */
-static int  rx_test(void *ctxt) { (void)ctxt; return 0; }
-static int  rx_go(uint32_t events, void *ctxt)
+static int  rx_test(void *vctxt)
 {
-	(void)ctxt;
+	(void)vctxt;
+	return ES_EXIT;
+}
+
+static int  rx_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
 	(void)events;
 	trace();
 	return 0;
 }
-static void rx_done(void *ctxt) { (void)ctxt; }
+static void rx_done(void *vctxt) { (void)vctxt; }
 
 /*
  * TX
  */
-static int  tx_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
-
-static int  tx_go(uint32_t events, void *ctxt)
+static int tx_test(void *vctxt)
 {
-	(void)ctxt;
+	(void)vctxt;
+	return ES_WAIT;
+}
+
+static int  tx_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
 	(void)events;
 	trace();
 	return 0;
 }
-static void tx_done(void *ctxt) { (void)ctxt; }
+
+static void tx_done(void *vctxt) { (void)vctxt; }
 
 /*
  * Notify
  */
-static int  notify_test(void *ctxt)
+static int  notify_test(void *vctxt)
 {
-	(void)ctxt;
-	return 0;
+	(void)vctxt;
+	return ES_EXIT;
 }
-static int  notify_go(uint32_t events, void *ctxt)
+
+static int  notify_go(uint32_t events, void *vctxt)
 {
-	(void)ctxt;
+	(void)vctxt;
 	(void)events;
 	trace();
 	return 0;
 }
-static void notify_done(void *ctxt) { (void)ctxt; }
+static void notify_done(void *vctxt) { (void)vctxt; }
 
 /*
  * Ctrl
  */
-static int  ctrl_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
-
-static int  ctrl_go(uint32_t events, void *ctxt)
+static int  ctrl_test(void *vctxt)
 {
-	(void)ctxt;
+	(void)vctxt;
+	return ES_WAIT;
+}
+
+static int  ctrl_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
 	(void)events;
 	trace();
 	return 0;
 }
 
-static void ctrl_done(void *ctxt) { (void)ctxt; }
+static void ctrl_done(void *vctxt) { (void)vctxt; }
 
 /*
  * Timer
  */
-static int  timer_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
-
-static int  timer_go(uint32_t events, void *ctxt)
+static int  timer_test(void *vctxt)
 {
-	(void)ctxt;
+	(void)vctxt;
+	return ES_WAIT;
+}
+
+static int  timer_go(uint32_t events, void *vctxt)
+{
+	// struct ctxt *ctxt = vctxt;
+	(void)vctxt;
 	(void)events;
-	trace();
+
+	uint64_t ev;
+	int ret;
+
+	ret = read(ctxt.timer_thread.fd, &ev, sizeof(ev));
+	if (ret >= 0 && ret != sizeof(ev)) {
+		trace_err("read(): wrong size");
+		return -1;
+	} else if (ret < 0) {
+		trace_err_p("read()");
+		return -1;
+	}
+
+	trace("%lu", ev);
+
 	return 0;
 }
 
@@ -408,6 +450,23 @@ int main(int argc, char **argv)
 	es_add(&ctxt.notify_thread);
 	es_add(&ctxt.ctrl_thread);
 	es_add(&ctxt.timer_thread);
+
+	struct itimerspec t = {
+		.it_interval = {
+			.tv_sec = 1,
+			.tv_nsec = 0,
+		},
+		.it_value = {
+			.tv_sec = 1,
+			.tv_nsec = 0,
+		},
+	};
+
+	err = timerfd_settime(ctxt.timer_thread.fd, 0, &t, NULL);
+	if (err < 0) {
+		trace_err_p("timerfd_settime()");
+		goto error_close_timer_fd;
+	}
 
 	err = es_schedule();
 	if (err < 0) {
