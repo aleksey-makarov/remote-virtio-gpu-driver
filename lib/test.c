@@ -227,32 +227,96 @@ struct ctxt {
 
 };
 
-static int  config_test(void *ctxt) { (void)ctxt; return 0; }
-static int  config_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+/*
+ * Config
+ */
+static int  config_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
+static int  config_go(uint32_t events, void *ctxt)
+{
+	(void)ctxt;
+	(void)events;
+	trace();
+	return 0;
+}
 static void config_done(void *ctxt) { (void)ctxt; }
 
+/*
+ * RX
+ */
 static int  rx_test(void *ctxt) { (void)ctxt; return 0; }
-static int  rx_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static int  rx_go(uint32_t events, void *ctxt)
+{
+	(void)ctxt;
+	(void)events;
+	trace();
+	return 0;
+}
 static void rx_done(void *ctxt) { (void)ctxt; }
 
-static int  tx_test(void *ctxt) { (void)ctxt; return 0; }
-static int  tx_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+/*
+ * TX
+ */
+static int  tx_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
+
+static int  tx_go(uint32_t events, void *ctxt)
+{
+	(void)ctxt;
+	(void)events;
+	trace();
+	return 0;
+}
 static void tx_done(void *ctxt) { (void)ctxt; }
 
-static int  notify_test(void *ctxt) { (void)ctxt; return 0; }
-static int  notify_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+/*
+ * Notify
+ */
+static int  notify_test(void *ctxt)
+{
+	(void)ctxt;
+	return 0;
+}
+static int  notify_go(uint32_t events, void *ctxt)
+{
+	(void)ctxt;
+	(void)events;
+	trace();
+	return 0;
+}
 static void notify_done(void *ctxt) { (void)ctxt; }
 
-static int  ctrl_test(void *ctxt) { (void)ctxt; return 0; }
-static int  ctrl_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+/*
+ * Ctrl
+ */
+static int  ctrl_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
+
+static int  ctrl_go(uint32_t events, void *ctxt)
+{
+	(void)ctxt;
+	(void)events;
+	trace();
+	return 0;
+}
+
 static void ctrl_done(void *ctxt) { (void)ctxt; }
 
-static int  timer_test(void *ctxt) { (void)ctxt; return 0; }
-static int  timer_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+/*
+ * Timer
+ */
+static int  timer_test(void *ctxt) { (void)ctxt; return ES_WAIT; }
+
+static int  timer_go(uint32_t events, void *ctxt)
+{
+	(void)ctxt;
+	(void)events;
+	trace();
+	return 0;
+}
+
 static void timer_done(void *ctxt) { (void)ctxt; }
 
 static struct ctxt ctxt = {
 	.config_thread = {
+		.name   = "config",
 		.ctxt   = &ctxt,
 		.events = EPOLLIN,
 		.test   = config_test,
@@ -260,6 +324,7 @@ static struct ctxt ctxt = {
 		.done   = config_done,
 	},
 	.rx_thread ={
+		.name   = "rx",
 		.ctxt   = &ctxt,
 		.events = 0,
 		.test   = rx_test,
@@ -267,6 +332,7 @@ static struct ctxt ctxt = {
 		.done   = rx_done,
 	},
 	.tx_thread = {
+		.name   = "tx",
 		.ctxt   = &ctxt,
 		.events = EPOLLIN,
 		.test   = tx_test,
@@ -274,6 +340,7 @@ static struct ctxt ctxt = {
 		.done   = tx_done,
 	},
 	.notify_thread = {
+		.name   = "notify",
 		.ctxt   = &ctxt,
 		.events = 0,
 		.test   = notify_test,
@@ -281,6 +348,7 @@ static struct ctxt ctxt = {
 		.done   = notify_done,
 	},
 	.ctrl_thread = {
+		.name   = "ctrl",
 		.ctxt   = &ctxt,
 		.events = EPOLLIN,
 		.test   = ctrl_test,
@@ -288,6 +356,7 @@ static struct ctxt ctxt = {
 		.done   = ctrl_done,
 	},
 	.timer_thread = {
+		.name   = "timer",
 		.ctxt   = &ctxt,
 		.events = EPOLLIN,
 		.test   = timer_test,
