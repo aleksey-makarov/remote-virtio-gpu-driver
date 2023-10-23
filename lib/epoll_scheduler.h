@@ -10,6 +10,7 @@
 
 struct es_thread {
 
+	const char *name;
 	void *ctxt;
 	int fd;
 	uint32_t events;

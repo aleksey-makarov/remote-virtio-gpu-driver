@@ -40,6 +40,7 @@ int es_add(struct es_thread *thread)
 	assert(thread);
 	assert(thread->fd >= 0);
 	assert(thread->test);
+	assert(thread->name);
 
 	int ret;
 
@@ -101,13 +102,18 @@ int es_schedule(void)
 			struct es_thread *th = data[n];
 			ret = th->test(th->ctxt);
 			if (ret == ES_DONE || ret < 0) {
+				if (ret < 0)
+					trace_err("\"%s\" reported error", th->name);
+				else
+					trace("\"%s\" requested shutdown", th->name);
 				goto done;
 			} else if (ret == ES_EXIT) {
 				ret = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
 				if (ret < 0) {
-					trace_err_p("epoll_ctl(DEL)");
+					trace_err_p("epoll_ctl(DEL) (\"%s\")", th->name);
 					goto done;
 				}
+				trace("\"%s\" is quitting", th->name);
 				if (th->done)
 					th->done(th->ctxt);
 				data[n] = NULL;
@@ -119,7 +125,7 @@ int es_schedule(void)
 					th->private.data.u32 = n;
 					ret = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, th->fd, &th->private);
 					if (ret < 0) {
-						trace_err_p("epoll_ctl(MOD)");
+						trace_err_p("epoll_ctl(MOD) (\"%s\")", th->name);
 						goto done;
 					}
 				}
