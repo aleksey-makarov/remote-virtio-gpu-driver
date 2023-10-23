@@ -11,6 +11,8 @@
 #define TRACE_FILE "test.c"
 #include "trace.h"
 
+#if 0
+
 static const char *q_name(int q)
 {
 	switch (q) {
@@ -190,6 +192,110 @@ done:
 	return err;
 }
 
+#endif
+
+struct ctxt;
+
+static int  config_test(void *ctxt) { (void)ctxt; return 0; }
+static int  config_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static void config_done(void *ctxt) { (void)ctxt; }
+
+static int  rx_test(void *ctxt) { (void)ctxt; return 0; }
+static int  rx_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static void rx_done(void *ctxt) { (void)ctxt; }
+
+static int  tx_test(void *ctxt) { (void)ctxt; return 0; }
+static int  tx_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static void tx_done(void *ctxt) { (void)ctxt; }
+
+static int  notify_test(void *ctxt) { (void)ctxt; return 0; }
+static int  notify_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static void notify_done(void *ctxt) { (void)ctxt; }
+
+static int  ctrl_test(void *ctxt) { (void)ctxt; return 0; }
+static int  ctrl_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static void ctrl_done(void *ctxt) { (void)ctxt; }
+
+static int  timer_test(void *ctxt) { (void)ctxt; return 0; }
+static int  timer_go(uint32_t events, void *ctxt) { (void)ctxt; (void)events; return 0; }
+static void timer_done(void *ctxt) { (void)ctxt; }
+
+static struct ctxt {
+	/*
+	 * Config
+	 */
+	struct es_thread config_thread;
+
+	/*
+	 * RX
+	 */
+	struct es_thread rx_thread;
+
+	/*
+	 * TX
+	 */
+	struct es_thread tx_thread;
+
+	/*
+	 * Notify
+	 */
+	struct es_thread notify_thread;
+
+	/*
+	 * Ctrl
+	 */
+	struct es_thread ctrl_thread;
+
+	/*
+	 * Timer
+	 */
+	struct es_thread timer_thread;
+
+} ctxt = {
+	.config_thread = {
+		.ctxt   = &ctxt,
+		.events = EPOLLIN,
+		.test   = config_test,
+		.go     = config_go,
+		.done   = config_done,
+	},
+	.rx_thread ={
+		.ctxt   = &ctxt,
+		.events = 0,
+		.test   = rx_test,
+		.go     = rx_go,
+		.done   = rx_done,
+	},
+	.tx_thread = {
+		.ctxt   = &ctxt,
+		.events = EPOLLIN,
+		.test   = tx_test,
+		.go     = tx_go,
+		.done   = tx_done,
+	},
+	.notify_thread = {
+		.ctxt   = &ctxt,
+		.events = 0,
+		.test   = notify_test,
+		.go     = notify_go,
+		.done   = notify_done,
+	},
+	.ctrl_thread = {
+		.ctxt   = &ctxt,
+		.events = EPOLLIN,
+		.test   = ctrl_test,
+		.go     = ctrl_go,
+		.done   = ctrl_done,
+	},
+	.timer_thread = {
+		.ctxt   = &ctxt,
+		.events = EPOLLIN,
+		.test   = timer_test,
+		.go     = timer_go,
+		.done   = timer_done,
+	},
+};
+
 int main(int argc, char **argv)
 {
 	(void)argc;
@@ -197,7 +303,6 @@ int main(int argc, char **argv)
 
 	struct vlo *vl;
 	int err;
-	int n;
 
 	struct virtio_lo_qinfo qinfos[VIRTIO_TEST_QUEUE_MAX] = {
 		{
@@ -228,50 +333,46 @@ int main(int argc, char **argv)
 	sleep(1);
 	trace("...done");
 
-	int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-	if (timer_fd < 0) {
+	ctxt.config_thread.fd = vlo_epoll_get_config(vl);
+	ctxt.rx_thread.fd     = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_RX    );
+	ctxt.tx_thread.fd     = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_TX    );
+	ctxt.notify_thread.fd = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	ctxt.ctrl_thread.fd   = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_CTRL  );
+
+	err = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+	if (err < 0) {
 		trace_err_p("timerfd_create()");
 		goto error_virtio_done;
 	}
+	ctxt.timer_thread.fd = err;
 
-	int efd = epoll_create(1);
-	if (efd == -1) {
-		trace_err_p("epoll_create()");
+	es_add(&ctxt.config_thread);
+	es_add(&ctxt.rx_thread);
+	es_add(&ctxt.tx_thread);
+	es_add(&ctxt.notify_thread);
+	es_add(&ctxt.ctrl_thread);
+	es_add(&ctxt.timer_thread);
+
+	err = es_schedule();
+	if (err < 0) {
+		trace_err("es_schedule()");
 		goto error_close_timer_fd;
 	}
 
-	{
-		struct epoll_event eeconfig = {
-			.events = EPOLLIN,
-			.data.u32 = 0xff,
-		};
+	close(ctxt.timer_thread.fd);
+	vlo_done(vl);
 
-		err = epoll_ctl(efd, EPOLL_CTL_ADD, vlo_epoll_get_config(vl), &eeconfig);
-		if (err) {
-			trace_err_p("epoll_ctl(config)");
-			goto error_close_efd;
-		}
+	exit(EXIT_SUCCESS);
 
-		err = epoll_ctl(efd, EPOLL_CTL_ADD, vlo_epoll_get_config(vl), &eeconfig);
-		if (err) {
-			trace_err_p("epoll_ctl(config)");
-			goto error_close_efd;
-		}
+error_close_timer_fd:
+	close(ctxt.timer_thread.fd);
+error_virtio_done:
+	vlo_done(vl);
+error:
+	exit(EXIT_FAILURE);
+}
 
-		unsigned int i;
-		for (i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
-			struct epoll_event eekick = {
-				.events = EPOLLIN,
-				.data.u32 = i,
-			};
-			err = epoll_ctl(efd, EPOLL_CTL_ADD, vlo_epoll_get_kick(vl, i), &eekick);
-			if (err) {
-				trace_err_p("epoll_ctl(kick)");
-				goto error_close_efd;
-			}
-		}
-	}
-
+#if 0
 	while(1) {
 #define MAX_EVENTS 10
 		struct epoll_event events[MAX_EVENTS];
@@ -362,19 +463,4 @@ again:
 		}
 		trace("----------------------------------------------------");
 	}
-
-	close(efd);
-	vlo_done(vl);
-
-	exit(EXIT_SUCCESS);
-
-error_done:
-error_close_efd:
-	close(efd);
-error_close_timer_fd:
-	close(timer_fd);
-error_virtio_done:
-	vlo_done(vl);
-error:
-	exit(EXIT_FAILURE);
-}
+#endif
