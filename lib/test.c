@@ -24,11 +24,9 @@ static const char *q_name(int q)
 	}
 }
 
-/* guest receive, i. e. we have to transmit */
-static bool serv_has_to_receive(void)
-{
-	return false;
-}
+#endif
+
+static bool serv_receive_is_running = false;
 
 static int serv_receive(struct vlo_buf *req)
 {
@@ -38,15 +36,13 @@ static int serv_receive(struct vlo_buf *req)
 
 	static unsigned int n = 0;
 
-	assert(serv_has_to_receive());
-
 	if (req->io[0].iov_len < BUF_LEN) {
 		trace_err("buffer is too short");
 		ret = -1;
 		goto done;
 	}
 
-	ret = snprintf(buf, BUF_LEN, "Hello world 0x%08x\n", n++);
+	ret = snprintf(buf, BUF_LEN, "Hello world %u\n", n++);
 	if (ret < 0) {
 		trace_err("snprintf()");
 		goto done;
@@ -58,6 +54,7 @@ done:
 	return ret;
 }
 
+#if 0
 static inline unsigned int umin(unsigned int a, unsigned int b)
 {
 	return a <= b ? a : b;
@@ -78,36 +75,6 @@ static int serv_transmit(struct vlo_buf *req)
 	}
 
 	return 0;
-}
-
-static int receive1(struct vlo *vl)
-{
-	int ret = 0;
-
-	// trace("*** RECEIVE");
-
-	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_RX);
-	if (!req) {
-		trace_err("vlo_buf_get()");
-		return -1;
-	}
-
-	trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
-
-	if (req->ion_transmit != 0) {
-		trace_err("not all buffers are writable");
-		ret = -1;
-		goto done;
-	}
-
-	ret = serv_receive(req);
-	if (ret < 0)
-		goto done;
-
-done:
-	vlo_buf_put(req, ret);
-
-	return ret < 0 ? -1 : 0;
 }
 
 static inline int min(int a, int b)
@@ -144,6 +111,25 @@ done:
 }
 
 #endif
+
+static int readfd(int fd)
+{
+	uint64_t ev;
+	int ret;
+
+	ret = read(fd, &ev, sizeof(ev));
+	if (ret >= 0 && ret != sizeof(ev)) {
+		trace_err("read(): wrong size");
+		return -1;
+	} else if (ret < 0) {
+		if (errno == EAGAIN)
+			return 0;
+		trace_err_p("read() (errno=%d)", errno);
+		return -1;
+	}
+
+	return ev;
+}
 
 struct ctxt {
 	struct vlo *vl;
@@ -207,16 +193,67 @@ static void config_done(void *vctxt) { (void)vctxt; }
 static int rx_test(void *vctxt)
 {
 	(void)vctxt;
-	return ES_EXIT;
+	int ret;
+
+	if (serv_receive_is_running) {
+
+		ret = readfd(ctxt.rx_thread.fd);
+		if (ret < 0) {
+			trace_err("readfd()");
+			return -1;
+		}
+
+		if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
+			// trace("buffer is available");
+			return ES_READY;
+		} else {
+			ctxt.rx_thread.events = EPOLLIN;
+			// trace("waiting for buffer");
+			return ES_WAIT;
+		}
+	} else {
+		ctxt.rx_thread.events = 0;
+		// trace("dont send anything");
+		return ES_WAIT;
+	}
 }
 
 static int rx_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
-	trace();
-	return 0;
+
+	int ret;
+
+	// trace();
+
+	assert(vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX));
+
+	struct vlo_buf *req = vlo_buf_get(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
+	if (!req) {
+		trace_err("vlo_buf_get()");
+		return -1;
+	}
+
+	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
+
+	if (req->ion_transmit != 0) {
+		trace_err("not all buffers are writable");
+		ret = -1;
+		goto done;
+	}
+
+	ret = serv_receive(req);
+	if (ret < 0)
+		goto done;
+
+done:
+	vlo_buf_put(req, ret);
+	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
+
+	return ret < 0 ? -1 : 0;
 }
+
 static void rx_done(void *vctxt) { (void)vctxt; }
 
 /*
@@ -346,15 +383,11 @@ static int timer_go(uint32_t events, void *vctxt)
 	(void)events;
 
 	static unsigned int n = 0;
-	uint64_t ev;
 	int ret;
 
-	ret = read(ctxt.timer_thread.fd, &ev, sizeof(ev));
-	if (ret >= 0 && ret != sizeof(ev)) {
-		trace_err("read(): wrong size");
-		return -1;
-	} else if (ret < 0) {
-		trace_err_p("read()");
+	ret = readfd(ctxt.timer_thread.fd);
+	if (ret < 0) {
+		trace_err("readfd()");
 		return -1;
 	}
 
@@ -364,6 +397,13 @@ static int timer_go(uint32_t events, void *vctxt)
 		trace_err("send_notification()");
 		return -1;
 	}
+
+	if (n % 6 == 2)
+		serv_receive_is_running = true;
+	if (n % 6 == 3)
+		serv_receive_is_running = false;
+
+
 	n++;
 
 	return 0;
