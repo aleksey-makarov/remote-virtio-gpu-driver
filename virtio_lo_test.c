@@ -138,7 +138,7 @@ static void notify_stop(struct ports_device *d)
 static void receive(struct ports_device *d, void *data, unsigned int len)
 {
 	(void)d;
-	int lenx = min(16, (int)len);
+	int lenx = min(32, (int)len);
 	MTRACE("%*pE (%u)", lenx, data, len);
 }
 
@@ -2207,7 +2207,7 @@ static int device_probe(struct virtio_device *vdev)
 	vdev->priv = portdev;
 
 	/* Find the queues. */
-	err = virtio_find_vqs(portdev->vdev, 3, vqs,
+	err = virtio_find_vqs(portdev->vdev, VIRTIO_TEST_QUEUE_MAX, vqs,
 			      io_callbacks,
 			      io_names, NULL);
 	if (err) {
