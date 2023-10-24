@@ -2046,7 +2046,8 @@ static inline void intr(struct virtqueue *vq)
 {
 	struct ports_device *portdev = vq->vdev->priv;
 	bool ret = queue_work(portdev->wq, &portdev->work);
-	MTRACE("%s", ret ? "true" : "false");
+	if (!ret)
+		MTRACE("already in queue");
 }
 
 static void rx_intr(struct virtqueue *vq)
@@ -2063,7 +2064,7 @@ static void tx_intr(struct virtqueue *vq)
 
 static void notify_intr(struct virtqueue *vq)
 {
-	MTRACE();
+	// MTRACE();
 	intr(vq);
 }
 
