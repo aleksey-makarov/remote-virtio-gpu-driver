@@ -143,58 +143,11 @@ done:
 	return ret;
 }
 
-static int send_notification(struct vlo *vl)
-{
-	struct vlo_buf *req;
-	struct virtio_test_notify *notify;
-	int err;
-	static unsigned int n;
-
-	if (!vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_NOTIFY)) {
-		trace_err("vlo_buf_is_available()");
-		return -1;
-	}
-
-	req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_NOTIFY);
-	if (!req) {
-		trace_err("vlo_buf_get()");
-		return -1;
-	}
-
-	trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
-
-	if (req->ion_transmit > 0) {
-		trace_err("not all buffers are writable");
-		err = -1;
-		goto done;
-	}
-
-	if (req->io[0].iov_len < sizeof(struct virtio_test_notify)) {
-		trace_err("first buffer is too small");
-		err = -1;
-		goto done;
-	}
-
-	notify = req->io[0].iov_base;
-	notify->id = n++ % 2;
-
-	vlo_buf_put(req, 0);
-
-	err = vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
-	if (err)
-		trace_err("vlo_kick()");
-
-	return err;
-
-done:
-	vlo_buf_put(req, 0);
-	vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
-	return err;
-}
-
 #endif
 
 struct ctxt {
+	struct vlo *vl;
+
 	/*
 	 * Config
 	 */
@@ -232,13 +185,13 @@ static struct ctxt ctxt;
 /*
  * Config
  */
-static int  config_test(void *vctxt)
+static int config_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_WAIT;
 }
 
-static int  config_go(uint32_t events, void *vctxt)
+static int config_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
@@ -251,13 +204,13 @@ static void config_done(void *vctxt) { (void)vctxt; }
 /*
  * RX
  */
-static int  rx_test(void *vctxt)
+static int rx_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_EXIT;
 }
 
-static int  rx_go(uint32_t events, void *vctxt)
+static int rx_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
@@ -275,7 +228,7 @@ static int tx_test(void *vctxt)
 	return ES_WAIT;
 }
 
-static int  tx_go(uint32_t events, void *vctxt)
+static int tx_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
@@ -288,31 +241,87 @@ static void tx_done(void *vctxt) { (void)vctxt; }
 /*
  * Notify
  */
-static int  notify_test(void *vctxt)
+static int notify_test(void *vctxt)
 {
 	(void)vctxt;
+	/*
+	 * FIXME: don't use this thread for now.
+	 * In a full fledged app, there should be a queue
+	 * where messages would wait till this thread discovers
+	 * new buffers available from virtio.
+	 * Now we just bail out if there is no virtio buffers available.
+	 */
 	return ES_EXIT;
 }
 
-static int  notify_go(uint32_t events, void *vctxt)
+static int notify_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
 	trace();
 	return 0;
 }
+
 static void notify_done(void *vctxt) { (void)vctxt; }
+
+static int send_notification(struct vlo *vl, unsigned int id)
+{
+	struct vlo_buf *req;
+	struct virtio_test_notify *notify;
+	int err;
+
+	if (!vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_NOTIFY)) {
+		trace_err("vlo_buf_is_available()");
+		return -1;
+	}
+
+	req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	if (!req) {
+		trace_err("vlo_buf_get()");
+		return -1;
+	}
+
+	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
+
+	if (req->ion_transmit > 0) {
+		trace_err("not all buffers are writable");
+		err = -1;
+		goto done;
+	}
+
+	if (req->io[0].iov_len < sizeof(struct virtio_test_notify)) {
+		trace_err("first buffer is too small");
+		err = -1;
+		goto done;
+	}
+
+	notify = req->io[0].iov_base;
+	notify->id = id;
+
+	vlo_buf_put(req, 0);
+
+	err = vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	if (err)
+		trace_err("vlo_kick()");
+
+	return err;
+
+done:
+	vlo_buf_put(req, 0);
+	vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	return err;
+}
 
 /*
  * Ctrl
  */
-static int  ctrl_test(void *vctxt)
+static int ctrl_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_WAIT;
 }
 
-static int  ctrl_go(uint32_t events, void *vctxt)
+static int ctrl_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
@@ -325,18 +334,18 @@ static void ctrl_done(void *vctxt) { (void)vctxt; }
 /*
  * Timer
  */
-static int  timer_test(void *vctxt)
+static int timer_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_WAIT;
 }
 
-static int  timer_go(uint32_t events, void *vctxt)
+static int timer_go(uint32_t events, void *vctxt)
 {
-	// struct ctxt *ctxt = vctxt;
 	(void)vctxt;
 	(void)events;
 
+	static unsigned int n = 0;
 	uint64_t ev;
 	int ret;
 
@@ -349,7 +358,13 @@ static int  timer_go(uint32_t events, void *vctxt)
 		return -1;
 	}
 
-	trace("%lu", ev);
+	// trace("%u", n);
+	ret = send_notification(ctxt.vl, n % 2);
+	if (ret < 0) {
+		trace_err("send_notification()");
+		return -1;
+	}
+	n++;
 
 	return 0;
 }
@@ -412,7 +427,6 @@ int main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-	struct vlo *vl;
 	int err;
 
 	struct virtio_lo_qinfo qinfos[VIRTIO_TEST_QUEUE_MAX] = { { .size = 16, }, { .size = 16, }, { .size = 16, }, { .size = 16, } };
@@ -421,8 +435,8 @@ int main(int argc, char **argv)
 		.something = 3,
 	};
 
-	vl = vlo_init(VIRTIO_ID_TEST, 0x1af4, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
-	if (!vl) {
+	ctxt.vl = vlo_init(VIRTIO_ID_TEST, 0x1af4, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
+	if (!ctxt.vl) {
 		trace_err("vlo_init()");
 		goto error;
 	}
@@ -431,11 +445,12 @@ int main(int argc, char **argv)
 	sleep(1);
 	trace("...done");
 
-	ctxt.config_thread.fd = vlo_epoll_get_config(vl);
-	ctxt.rx_thread.fd     = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_RX    );
-	ctxt.tx_thread.fd     = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_TX    );
-	ctxt.notify_thread.fd = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
-	ctxt.ctrl_thread.fd   = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_CTRL  );
+	// FIXME: check for errors
+	ctxt.config_thread.fd = vlo_epoll_get_config(ctxt.vl);
+	ctxt.rx_thread.fd     = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX    );
+	ctxt.tx_thread.fd     = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX    );
+	ctxt.notify_thread.fd = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	ctxt.ctrl_thread.fd   = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_CTRL  );
 
 	err = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 	if (err < 0) {
@@ -444,6 +459,7 @@ int main(int argc, char **argv)
 	}
 	ctxt.timer_thread.fd = err;
 
+	// FIXME: check for errors
 	es_add(&ctxt.config_thread);
 	es_add(&ctxt.rx_thread);
 	es_add(&ctxt.tx_thread);
@@ -475,14 +491,14 @@ int main(int argc, char **argv)
 	}
 
 	close(ctxt.timer_thread.fd);
-	vlo_done(vl);
+	vlo_done(ctxt.vl);
 
 	exit(EXIT_SUCCESS);
 
 error_close_timer_fd:
 	close(ctxt.timer_thread.fd);
 error_virtio_done:
-	vlo_done(vl);
+	vlo_done(ctxt.vl);
 error:
 	exit(EXIT_FAILURE);
 }
