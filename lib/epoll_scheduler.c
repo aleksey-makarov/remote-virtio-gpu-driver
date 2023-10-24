@@ -98,13 +98,15 @@ int es_schedule(void)
 
 	while (data_len) {
 
+		bool ready = false;
 		unsigned int deleted = 0;
 		for (n = 0; n < data_len; n++) {
 			struct es_thread *th = data[n];
 			ret = th->test(th->ctxt);
+			th->ready = false;
 			if (ret == ES_DONE || ret < 0) {
 				if (ret < 0)
-					trace_err("\"%s\" reported error", th->name);
+					trace_err("\"%s\" test reported error", th->name);
 				else
 					trace("\"%s\" requested shutdown", th->name);
 				goto done;
@@ -119,6 +121,9 @@ int es_schedule(void)
 					th->done(th->ctxt);
 				data[n] = NULL;
 				deleted++;
+			} else if (ret == ES_READY) {
+				th->ready = true;
+				ready = true;
 			} else {
 				assert(ret == ES_WAIT);
 				if (th->events != th->private.events || n != th->private.data.u32 ) {
@@ -133,20 +138,45 @@ int es_schedule(void)
 			}
 		}
 
-		ret = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
-		if (ret < 0) {
-			trace_err_p("epoll_wait()");
-			goto done;
-		} else if (ret == 0 || ret >= MAX_EVENTS) {
-			trace_err("epoll_wait() ???");
-			ret = -1;
-			goto done;
-		}
+		if (!ready) {
+			// trace("!ready, wait and go");
 
-		for (i = 0; i < ret; i++) {
-			struct es_thread *th = data[events[i].data.u32];
-			if (th->go)
-				th->go(events[i].events, th->ctxt);
+			ret = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+			if (ret < 0) {
+				trace_err_p("epoll_wait()");
+				goto done;
+			} else if (ret == 0 || ret >= MAX_EVENTS) {
+				trace_err("epoll_wait() ???");
+				ret = -1;
+				goto done;
+			}
+
+			for (i = 0; i < ret; i++) {
+				struct es_thread *th = data[events[i].data.u32];
+				if (th->go) {
+					ret = th->go(events[i].events, th->ctxt);
+					if (ret < 0) {
+						trace_err("\"%s\" go reported error @2", th->name);
+						goto done;
+					}
+				}
+			}
+		} else {
+
+			// trace("ready, just go");
+
+			for (n = 0; n < data_len; n++) {
+				struct es_thread *th = data[n];
+				if (!th->ready)
+					continue;
+				if (th->go) {
+					ret = th->go(events[n].events, th->ctxt);
+					if (ret < 0) {
+						trace_err("\"%s\" go reported error @2", th->name);
+						goto done;
+					}
+				}
+			}
 		}
 
 		if (deleted) {

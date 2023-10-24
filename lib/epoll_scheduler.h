@@ -3,9 +3,11 @@
 
 #define ES_DONE  (0)
 #define ES_EXIT  (1)
-#define ES_WAIT  (2)
+#define ES_READY (2)
+#define ES_WAIT  (3)
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <sys/epoll.h>
 
 struct es_thread {
@@ -20,6 +22,8 @@ struct es_thread {
 	 * Returns:
 	 * - ES_DONE to exit all threads and quit es_schedule()
 	 * - ES_EXIT to gracefully exit this thread
+	 * - ES_READY ready to go
+	 *     run all threads with ES_READY without waiting and test again
 	 * - ES_WAIT wait then go
 	 *     by the time test() returns ES_WAIT `events` should be set
 	 * - any negative vaule to signal error
@@ -42,6 +46,7 @@ struct es_thread {
 	 * Private to epoll_scheduler, don't touch
 	 */
 	struct epoll_event private;
+	bool ready;
 };
 
 int es_add(struct es_thread *thread);
