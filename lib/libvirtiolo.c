@@ -402,7 +402,7 @@ int vlo_kick(struct vlo *vl, int queue)
 		.qidx = queue,
 	};
 
-	trace("ioctl(VIRTIO_LO_KICK, %d)", queue);
+	// trace("ioctl(VIRTIO_LO_KICK, %d)", queue);
 	err = ioctl(vl->fd, VIRTIO_LO_KICK, &k);
 	if (err) {
 		trace_err_p("ioctl(VIRTIO_LO_KICK)");
