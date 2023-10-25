@@ -138,33 +138,29 @@ int es_schedule(void)
 			}
 		}
 
-		if (!ready) {
-			// trace("!ready, wait and go");
+		ret = epoll_wait(epoll_fd, events, MAX_EVENTS, ready ? 0 : -1);
+		if (ret < 0) {
+			trace_err_p("epoll_wait()");
+			goto done;
+		} else if ( (!ready && ret == 0) || ret >= MAX_EVENTS) {
+			trace_err("epoll_wait() ???");
+			ret = -1;
+			goto done;
+		}
 
-			ret = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
-			if (ret < 0) {
-				trace_err_p("epoll_wait()");
-				goto done;
-			} else if (ret == 0 || ret >= MAX_EVENTS) {
-				trace_err("epoll_wait() ???");
-				ret = -1;
-				goto done;
-			}
-
-			for (i = 0; i < ret; i++) {
-				struct es_thread *th = data[events[i].data.u32];
-				if (th->go) {
-					ret = th->go(events[i].events, th->ctxt);
-					if (ret < 0) {
-						trace_err("\"%s\" go reported error @2", th->name);
-						goto done;
-					}
+		for (i = 0; i < ret; i++) {
+			struct es_thread *th = data[events[i].data.u32];
+			if (th->go) {
+				ret = th->go(events[i].events, th->ctxt);
+				if (ret < 0) {
+					trace_err("\"%s\" go reported error @2", th->name);
+					goto done;
 				}
 			}
-		} else {
+			th->ready = false;
+		}
 
-			// trace("ready, just go");
-
+		if (ready) {
 			for (n = 0; n < data_len; n++) {
 				struct es_thread *th = data[n];
 				if (!th->ready)

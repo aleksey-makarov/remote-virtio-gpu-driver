@@ -18,21 +18,23 @@ struct es_thread {
 	uint32_t events;
 
 	/*
-	 * Should be non-null
+	 * `test` should be non-null
 	 * Returns:
-	 * - ES_DONE to exit all threads and quit es_schedule()
+	 * - ES_DONE to exit all threads and quit `es_schedule()`
 	 * - ES_EXIT to gracefully exit this thread
-	 * - ES_READY ready to go
-	 *     run all threads with ES_READY without waiting and test again
-	 * - ES_WAIT wait then go
-	 *     by the time test() returns ES_WAIT `events` should be set
+	 * - ES_READY ready to `go()`
+	 *     don't wait on the `fd` for this thread, mark it as ready
+	 * - ES_WAIT wait for the events specified in the `events` field then `go()`
+	 *     setting `events` to 0 would exclude this thread from running
+	 *     in the current iteration
 	 * - any negative vaule to signal error
 	 */
 	int (*test)(void *ctxt);
 
 	/*
-	 * Returns - any non-negative value to proceed
-	 *         - any negative vaule to signal error
+	 * Returns
+	 *     - any non-negative value to proceed
+	 *     - any negative vaule to signal error
 	 */
 	int (*go)(uint32_t events, void *ctxt);
 
