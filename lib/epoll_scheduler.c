@@ -5,103 +5,199 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <sys/epoll.h>
 #include <assert.h>
 
-#define DATA_INITIAL_CAPACITY 16
+#define INITIAL_CAPACITY 16
+struct es {
+	struct es_thread **data; // FIXME rename to threads
+	struct epoll_event *events;
+	unsigned int data_len;
+	unsigned int data_capacity;
+	int epoll_fd;
+};
 
-// FIXME: don't use static, allocate context for this library
-
-static struct es_thread **data = NULL;
-static unsigned int data_len = 0;
-static unsigned int data_capacity = 0;
-
-static int epoll_fd = -1;
-
-static void error_all_done(void)
+static void es_done(struct es *es)
 {
 	unsigned int n;
 
-	for (n = 0; n < data_len; n++)
-		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, data[n]->fd, (void *)1);
-	close(epoll_fd);
-	epoll_fd = -1;
-	for (n = 0; n < data_len; n++) {
-		if (!data[n]->done)
+	assert(es);
+
+	for (n = 0; n < es->data_len; n++) {
+		struct es_thread *th = es->data[n];
+		if (!th)
 			continue;
-		data[n]->done(data[n]->ctxt);
+		epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
+		if (th->done)
+			th->done(th->ctxt);
 	}
-	free(data);
-	data = NULL;
-	data_len = data_capacity = 0;
+
+	close(es->epoll_fd);
+
+	free(es->data);
+	free(es->events);
+	free(es);
 }
 
-int es_add(struct es_thread *thread)
+static int es_resize(struct es *es)
 {
+	unsigned int capacity_new = es->data_capacity * 2;
+
+	struct es_thread **data_new = reallocarray(es->data, capacity_new, sizeof(struct es_thread *));
+	if (!data_new) {
+		trace_err_p("reallocarray() data");
+		return -1;
+	}
+	es->data = data_new;
+
+	struct epoll_event *events_new = reallocarray(es->events, capacity_new, sizeof(struct epoll_event));
+	if (!events_new) {
+		trace_err_p("reallocarray() events");
+		return -1;
+	}
+	es->events = events_new;
+
+	es->data_capacity = capacity_new;
+
+	return 0;
+}
+
+struct es *es_init(struct es_thread *thread, ...)
+{
+	unsigned int threads;
+	unsigned int capacity;
+	unsigned int n;
+	va_list va;
+	int err;
+
+	assert(thread);
+
+	va_start(va, thread);
+	for (threads = 1; va_arg(va, void *); threads++)
+		;
+	va_end(va);
+
+	struct es *es = malloc(sizeof(struct es));
+	if (!es) {
+		trace_err("malloc() es");
+		return NULL;
+	}
+
+	es->epoll_fd = epoll_create(1);
+	if (es->epoll_fd < 0) {
+		trace_err_p("epoll_create()");
+		goto error_free;
+	}
+
+	for (capacity = INITIAL_CAPACITY; capacity < threads; capacity *= 2)
+		;
+
+	es->data_len = threads;
+	es->data_capacity = capacity;
+
+	es->data = calloc(capacity, sizeof(struct es_data *));
+	if (!es->data) {
+		trace_err("calloc() data");
+		goto error_close;
+	}
+
+	va_start(va, thread);
+	for (n = 0; n < threads; n++) {
+		struct es_thread *th = va_arg(va, struct es_thread *);
+
+		assert(th->fd >= 0);
+		assert(th->test);
+		assert(th->name);
+
+		es->data[n] = th;
+		th->private.data.u32 = n;
+		th->private.events = 0;
+
+		err = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
+		if (err) {
+			trace_err_p("epoll_ctl(ADD) %u", n);
+			va_end(va);
+			goto error_free_data;
+		}
+	}
+	va_end(va);
+
+	es->events = calloc(capacity, sizeof(struct epoll_event));
+	if (!es->events) {
+		trace_err("calloc() events");
+		goto error_epoll_ctl_del;
+	}
+
+	trace("new scheduler: len=%u, capacity=%u", es->data_len, es->data_capacity);
+	return es;
+
+error_epoll_ctl_del: {
+		unsigned int i;
+		for (i = 0; i < n; i++)
+			epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, es->data[i]->fd, (void *)1);
+	}
+error_free_data:
+	free(es->data);
+error_close:
+	close(es->epoll_fd);
+error_free:
+	free(es);
+	return NULL;;
+}
+
+int es_add(struct es *es, struct es_thread *thread)
+{
+	int ret;
+
+	assert(es);
 	assert(thread);
 	assert(thread->fd >= 0);
 	assert(thread->test);
 	assert(thread->name);
 
-	int ret;
-
-	if (!data) {
-		epoll_fd = epoll_create(1);
-		if (epoll_fd < 0) {
-			trace_err_p("epoll_create()");
-			return -1;
+	if (es->data_len == es->data_capacity) {
+		ret = es_resize(es);
+		if (ret < 0) {
+			trace_err("es_resize()");
+			es_done(es);
+			return ret;
 		}
-		data = calloc(DATA_INITIAL_CAPACITY, sizeof(struct es_data *));
-		if (!data) {
-			close(epoll_fd);
-			epoll_fd = -1;
-			trace_err("calloc() @1");
-			return -1;
-		}
-		data_len = 0;
-		data_capacity = DATA_INITIAL_CAPACITY;
-	} else if (data_len == data_capacity) {
-		data_capacity *= 2;
-		struct es_thread **data1 = reallocarray(data, data_capacity, sizeof(struct es_data *));
-		if (!data1) {
-			trace_err("calloc() @2");
-			error_all_done();
-			return -1;
-		}
-		data = data1;
 	}
 
 	thread->private.events = 0;
-	thread->private.data.u32 = data_len;
-
-	data[data_len++] = thread;
-
-	ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, thread->fd, &thread->private);
+	thread->private.data.u32 = es->data_len;
+	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, thread->fd, &thread->private);
 	if (ret) {
 		trace_err_p("epoll_ctl(ADD)");
-		error_all_done();
+		es_done(es);
 		return ret;
 	}
 
+	es->data[es->data_len++] = thread;
+
+	trace("new thread: name=%s", thread->name);
 	return 0;
 }
 
-int es_schedule(void)
+int es_schedule(struct es *es)
 {
 	unsigned int n;
 	int i;
 	int ret = 0;
 
-// FIXME: should be DATA_INITIAL_CAPACITY
-#define MAX_EVENTS 10
-	struct epoll_event events[MAX_EVENTS];
+	assert(es);
+	assert(es->data_len);
 
-	while (data_len) {
+	while (es->data_len) {
+
+		unsigned int data_len = es->data_len;
 
 		bool ready = false;
 		unsigned int deleted = 0;
+
 		for (n = 0; n < data_len; n++) {
-			struct es_thread *th = data[n];
+			struct es_thread *th = es->data[n];
 			ret = th->test(th->ctxt);
 			th->ready = false;
 			if (ret == ES_DONE || ret < 0) {
@@ -111,7 +207,7 @@ int es_schedule(void)
 					trace("\"%s\" requested shutdown", th->name);
 				goto done;
 			} else if (ret == ES_EXIT) {
-				ret = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
+				ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
 				if (ret < 0) {
 					trace_err_p("epoll_ctl(DEL) (\"%s\")", th->name);
 					goto done;
@@ -119,7 +215,7 @@ int es_schedule(void)
 				trace("\"%s\" is quitting", th->name);
 				if (th->done)
 					th->done(th->ctxt);
-				data[n] = NULL;
+				es->data[n] = NULL;
 				deleted++;
 			} else if (ret == ES_READY) {
 				th->ready = true;
@@ -129,7 +225,7 @@ int es_schedule(void)
 				if (th->events != th->private.events || n != th->private.data.u32 ) {
 					th->private.events = th->events;
 					th->private.data.u32 = n;
-					ret = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, th->fd, &th->private);
+					ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_MOD, th->fd, &th->private);
 					if (ret < 0) {
 						trace_err_p("epoll_ctl(MOD) (\"%s\")", th->name);
 						goto done;
@@ -138,20 +234,21 @@ int es_schedule(void)
 			}
 		}
 
-		ret = epoll_wait(epoll_fd, events, MAX_EVENTS, ready ? 0 : -1);
+		ret = epoll_wait(es->epoll_fd, es->events, es->data_capacity, ready ? 0 : -1);
 		if (ret < 0) {
 			trace_err_p("epoll_wait()");
 			goto done;
-		} else if ( (!ready && ret == 0) || ret >= MAX_EVENTS) {
+		} else if ( (!ready && ret == 0) || (unsigned int)ret >= es->data_capacity) {
 			trace_err("epoll_wait() ???");
 			ret = -1;
 			goto done;
 		}
 
 		for (i = 0; i < ret; i++) {
-			struct es_thread *th = data[events[i].data.u32];
+			struct epoll_event *ev = es->events + i;
+			struct es_thread *th = es->data[ev->data.u32];
 			if (th->go) {
-				ret = th->go(events[i].events, th->ctxt);
+				ret = th->go(ev->events, th->ctxt);
 				if (ret < 0) {
 					trace_err("\"%s\" go reported error @2", th->name);
 					goto done;
@@ -162,11 +259,11 @@ int es_schedule(void)
 
 		if (ready) {
 			for (n = 0; n < data_len; n++) {
-				struct es_thread *th = data[n];
+				struct es_thread *th = es->data[n];
 				if (!th->ready)
 					continue;
 				if (th->go) {
-					ret = th->go(events[n].events, th->ctxt);
+					ret = th->go(0, th->ctxt);
 					if (ret < 0) {
 						trace_err("\"%s\" go reported error @2", th->name);
 						goto done;
@@ -177,20 +274,30 @@ int es_schedule(void)
 
 		if (deleted) {
 			unsigned int from, to;
+
 			for (from = to = 0; from < data_len; from++) {
-				if (!data[from])
+				if (!es->data[from])
 					continue;
-				if (from != to)
-					data[to] = data[from];
+				es->data[to] = es->data[from];
 				to++;
 			}
-			data_len = to;
-			ret = 0;
+
 			assert(deleted == from - to);
+
+			// check if some threads were added
+			if (data_len < es->data_len) {
+				for (from = data_len; from < es->data_len; to++, from++) {
+					assert(es->data[from]);
+					es->data[to] = es->data[from];
+				}
+			}
+
+			es->data_len = to;
+			ret = 0; // if data_len == 0 and we are quitting
 		}
 	}
 
 done:
-	error_all_done();
+	es_done(es);
 	return ret;
 }

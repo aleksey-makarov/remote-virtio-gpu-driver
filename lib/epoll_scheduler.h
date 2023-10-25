@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <sys/epoll.h>
 
+struct es;
+
 struct es_thread {
 
 	const char *name;
@@ -51,7 +53,16 @@ struct es_thread {
 	bool ready;
 };
 
-int es_add(struct es_thread *thread);
-int es_schedule(void);
+struct es *es_init(struct es_thread *thread, ...);
+
+/*
+ * If `es_add()` returns error, the `es` pointer is not valid anymore
+ */
+int es_add(struct es *es, struct es_thread *thread);
+
+/*
+ * After this function returns, the `es` pointer is not valid anymore
+ */
+int es_schedule(struct es *es);
 
 #endif
