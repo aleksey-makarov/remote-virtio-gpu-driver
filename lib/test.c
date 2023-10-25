@@ -485,7 +485,6 @@ int main(int argc, char **argv)
 	sleep(1);
 	trace("...done");
 
-	// FIXME: check for errors
 	ctxt.config_thread.fd = vlo_epoll_get_config(ctxt.vl);
 	ctxt.rx_thread.fd     = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX    );
 	ctxt.tx_thread.fd     = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX    );
@@ -498,14 +497,6 @@ int main(int argc, char **argv)
 		goto error_virtio_done;
 	}
 	ctxt.timer_thread.fd = err;
-
-	// FIXME: check for errors
-	es_add(&ctxt.config_thread);
-	es_add(&ctxt.rx_thread);
-	es_add(&ctxt.tx_thread);
-	es_add(&ctxt.notify_thread);
-	es_add(&ctxt.ctrl_thread);
-	es_add(&ctxt.timer_thread);
 
 	struct itimerspec t = {
 		.it_interval = {
@@ -524,7 +515,20 @@ int main(int argc, char **argv)
 		goto error_close_timer_fd;
 	}
 
-	err = es_schedule();
+	struct es *es = es_init(
+		&ctxt.config_thread,
+		&ctxt.rx_thread,
+		&ctxt.tx_thread,
+		&ctxt.notify_thread,
+		&ctxt.ctrl_thread,
+		&ctxt.timer_thread,
+		NULL);
+	if (!es) {
+		trace_err("es_init()");
+		goto error_close_timer_fd;
+	}
+
+	err = es_schedule(es);
 	if (err < 0) {
 		trace_err("es_schedule()");
 		goto error_close_timer_fd;
