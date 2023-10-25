@@ -63,25 +63,46 @@ static int es_resize(struct es *es)
 	return 0;
 }
 
+static int _es_add(struct es *es, struct es_thread *th)
+{
+	int ret;
+
+	assert(th->fd >= 0);
+	assert(th->test);
+	assert(th->name);
+
+	th->private.data.u32 = es->data_len;
+	th->private.events = 0;
+
+	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
+	if (ret < 0) {
+		trace_err_p("epoll_ctl(ADD) %u", es->data_len);
+		return ret;
+	}
+
+	es->data[es->data_len++] = th;
+	return ret;
+}
+
 struct es *es_init(struct es_thread *thread, ...)
 {
 	unsigned int threads;
 	unsigned int capacity;
-	unsigned int n;
-	va_list va;
+	struct es_thread *th;
+	va_list va1, va2;
 	int err;
 
 	assert(thread);
 
-	va_start(va, thread);
-	for (threads = 1; va_arg(va, void *); threads++)
+	va_start(va1, thread);
+	va_copy(va2, va1);
+	for (threads = 1; va_arg(va1, void *); threads++)
 		;
-	va_end(va);
 
 	struct es *es = malloc(sizeof(struct es));
 	if (!es) {
 		trace_err("malloc() es");
-		return NULL;
+		goto error_va_end;
 	}
 
 	es->epoll_fd = epoll_create(1);
@@ -93,7 +114,7 @@ struct es *es_init(struct es_thread *thread, ...)
 	for (capacity = INITIAL_CAPACITY; capacity < threads; capacity *= 2)
 		;
 
-	es->data_len = threads;
+	es->data_len = 0;
 	es->data_capacity = capacity;
 
 	es->data = calloc(capacity, sizeof(struct es_data *));
@@ -102,26 +123,20 @@ struct es *es_init(struct es_thread *thread, ...)
 		goto error_close;
 	}
 
-	va_start(va, thread);
-	for (n = 0; n < threads; n++) {
-		struct es_thread *th = va_arg(va, struct es_thread *);
+	err = _es_add(es, thread);
+	if (err < 0) {
+		trace_err("_es_add(\'%s\')", thread->name);
+		goto error_free_data;
+	}
 
-		assert(th->fd >= 0);
-		assert(th->test);
-		assert(th->name);
-
-		es->data[n] = th;
-		th->private.data.u32 = n;
-		th->private.events = 0;
-
-		err = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
-		if (err) {
-			trace_err_p("epoll_ctl(ADD) %u", n);
-			va_end(va);
-			goto error_free_data;
+	for (th = va_arg(va2, struct es_thread *); th; th = va_arg(va2, struct es_thread *)) {
+		// trace("fd=%d, test=0x%lu, name=\'%s\'", th->fd, (long unsigned int)th->test, th->name);
+		err = _es_add(es, th);
+		if (err < 0) {
+			trace_err("_es_add(\'%s\')", th->name);
+			goto error_epoll_ctl_del;
 		}
 	}
-	va_end(va);
 
 	es->events = calloc(capacity, sizeof(struct epoll_event));
 	if (!es->events) {
@@ -134,7 +149,7 @@ struct es *es_init(struct es_thread *thread, ...)
 
 error_epoll_ctl_del: {
 		unsigned int i;
-		for (i = 0; i < n; i++)
+		for (i = 0; i < es->data_len; i++)
 			epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, es->data[i]->fd, (void *)1);
 	}
 error_free_data:
@@ -143,6 +158,9 @@ error_close:
 	close(es->epoll_fd);
 error_free:
 	free(es);
+error_va_end:
+	va_end(va1);
+	va_end(va2);
 	return NULL;;
 }
 
@@ -152,9 +170,6 @@ int es_add(struct es *es, struct es_thread *thread)
 
 	assert(es);
 	assert(thread);
-	assert(thread->fd >= 0);
-	assert(thread->test);
-	assert(thread->name);
 
 	if (es->data_len == es->data_capacity) {
 		ret = es_resize(es);
@@ -165,16 +180,12 @@ int es_add(struct es *es, struct es_thread *thread)
 		}
 	}
 
-	thread->private.events = 0;
-	thread->private.data.u32 = es->data_len;
-	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, thread->fd, &thread->private);
-	if (ret) {
-		trace_err_p("epoll_ctl(ADD)");
+	ret = _es_add(es, thread);
+	if (ret < 0) {
+		trace_err_p("_es_add(\'%s\')", thread->name);
 		es_done(es);
 		return ret;
 	}
-
-	es->data[es->data_len++] = thread;
 
 	trace("new thread: name=%s", thread->name);
 	return 0;
