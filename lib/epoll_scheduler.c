@@ -96,6 +96,7 @@ struct es *es_init(struct es_thread *thread, ...)
 
 	va_start(va1, thread);
 	va_copy(va2, va1);
+
 	for (threads = 1; va_arg(va1, void *); threads++)
 		;
 
@@ -145,6 +146,10 @@ struct es *es_init(struct es_thread *thread, ...)
 	}
 
 	trace("new scheduler: len=%u, capacity=%u", es->data_len, es->data_capacity);
+
+	va_end(va1);
+	va_end(va2);
+
 	return es;
 
 error_epoll_ctl_del: {
@@ -276,7 +281,7 @@ int es_schedule(struct es *es)
 				if (th->go) {
 					ret = th->go(0, th->ctxt);
 					if (ret < 0) {
-						trace_err("\"%s\" go reported error @2", th->name);
+						trace_err("\"%s\" go reported error @3", th->name);
 						goto done;
 					}
 				}
@@ -296,11 +301,9 @@ int es_schedule(struct es *es)
 			assert(deleted == from - to);
 
 			// check if some threads were added
-			if (data_len < es->data_len) {
-				for (from = data_len; from < es->data_len; to++, from++) {
-					assert(es->data[from]);
-					es->data[to] = es->data[from];
-				}
+			for (from = data_len; from < es->data_len; to++, from++) {
+				assert(es->data[from]);
+				es->data[to] = es->data[from];
 			}
 
 			es->data_len = to;
