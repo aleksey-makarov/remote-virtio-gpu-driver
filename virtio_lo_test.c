@@ -118,6 +118,69 @@ struct ports_device {
 #endif
 };
 
+#define RANDBUFFER_MAX_LENGTH 8
+struct randbuffer {
+	unsigned int len;
+	struct scatterlist sg[RANDBUFFER_MAX_LENGTH];
+};
+
+static struct randbuffer *randbuffer_alloc(void)
+{
+	struct randbuffer *rb = kmalloc(sizeof(struct randbuffer), GFP_KERNEL);
+	unsigned int i;
+
+	unsigned char len;
+	get_random_bytes(&len, sizeof(len));
+	rb->len = (unsigned int)(len % (RANDBUFFER_MAX_LENGTH - 1)) + 1;
+
+	sg_init_table(rb->sg, rb->len);
+
+	for (i = 0; i < rb->len; i++) {
+
+		struct scatterlist *sg = rb->sg + i;
+
+		struct page *p = alloc_page(GFP_KERNEL);
+		if (!p) {
+			MTRACE("* alloc_page()");
+			goto error;
+		}
+
+		unsigned int length;
+		get_random_bytes(&length, sizeof(length));
+		length = (length % (PAGE_SIZE - 1)) + 1;
+
+		unsigned int offset;
+		get_random_bytes(&offset, sizeof(offset));
+		offset = offset % (PAGE_SIZE - length);
+
+		sg_set_page(sg, p, length, offset);
+	}
+
+	MTRACE("new buffer @%p, len=%u", rb, rb->len);
+	for (i = 0; i < rb->len; i++) {
+		MTRACE("%u@%u", rb->sg[i].length, rb->sg[i].offset);
+	}
+
+	return rb;
+
+error:
+	for (unsigned int j = 0; j < i; j++) {
+		struct page *p = sg_page(rb->sg + j);
+		__free_page(p);
+	}
+	kfree(rb);
+	return NULL;
+}
+
+static void randbuffer_free(struct randbuffer *rb)
+{
+	for (unsigned int i = 0; i < rb->len; i++) {
+		struct page *p = sg_page(rb->sg + i);
+		__free_page(p);
+	}
+	kfree(rb);
+}
+
 static inline struct ports_device *work_to_ports_device(struct work_struct *w)
 {
 	return container_of(w, struct ports_device, work);
