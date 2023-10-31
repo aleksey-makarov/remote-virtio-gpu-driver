@@ -3,6 +3,7 @@
 #include "trace.h"
 
 #include <stdlib.h>
+#include <assert.h>
 
 struct stream_gen_state {
 	uint32_t state;
@@ -19,8 +20,6 @@ struct stream_gen {
 };
 
 /* https://en.wikipedia.org/wiki/Xorshift */
-
-/* The state must be initialized to non-zero */
 static uint32_t xorshift32(uint32_t *state)
 {
 	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
@@ -33,7 +32,8 @@ static uint32_t xorshift32(uint32_t *state)
 
 struct stream_gen *stream_gen_init(uint32_t seed)
 {
-	(void)seed;
+	assert(seed);
+
 	struct stream_gen *sg = malloc(sizeof(struct stream_gen));
 	if (!sg) {
 		trace_err("malloc()");
