@@ -17,7 +17,7 @@ set_target_properties(virtiolo
 	SOVERSION  ${LIBVIRTIOLO_SOVERSION}
 	)
 
-add_executable(test test.c epoll_scheduler.c)
+add_executable(test test.c epoll_scheduler.c stream_gen.c)
 target_link_libraries(test PRIVATE virtiolo)
 
 include(GNUInstallDirs)
