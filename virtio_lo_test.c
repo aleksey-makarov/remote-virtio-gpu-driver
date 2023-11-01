@@ -28,7 +28,7 @@
 #define MTRACE_FILE "virtio_lo_test.c"
 #include "mtrace.h"
 
-struct ports_device {
+struct virtio_lo_test_device {
 	struct virtio_device *vdev;
 
 	struct workqueue_struct *wq;
@@ -131,24 +131,24 @@ static void randbuffer_free(struct randbuffer *rb)
 	kfree(rb);
 }
 
-static inline struct ports_device *work_to_ports_device(struct work_struct *w)
+static inline struct virtio_lo_test_device *work_to_virtio_lo_test_device(struct work_struct *w)
 {
-	return container_of(w, struct ports_device, work);
+	return container_of(w, struct virtio_lo_test_device, work);
 }
 
-static void notify_start(struct ports_device *d)
-{
-	(void)d;
-	MTRACE();
-}
-
-static void notify_stop(struct ports_device *d)
+static void notify_start(struct virtio_lo_test_device *d)
 {
 	(void)d;
 	MTRACE();
 }
 
-static void receive(struct ports_device *d, void *data, unsigned int len)
+static void notify_stop(struct virtio_lo_test_device *d)
+{
+	(void)d;
+	MTRACE();
+}
+
+static void receive(struct virtio_lo_test_device *d, void *data, unsigned int len)
 {
 	(void)d;
 	int lenx = min(32, (int)len);
@@ -157,7 +157,7 @@ static void receive(struct ports_device *d, void *data, unsigned int len)
 
 static void work_func(struct work_struct *work)
 {
-	struct ports_device *d = work_to_ports_device(work);
+	struct virtio_lo_test_device *d = work_to_virtio_lo_test_device(work);
 	int err;
 	bool kick;
 
@@ -250,13 +250,13 @@ static void queue_fini(struct virtqueue *q)
 	}
 }
 
-static void notify_queue_fini(struct ports_device *d)
+static void notify_queue_fini(struct virtio_lo_test_device *d)
 {
 	MTRACE();
 	queue_fini(d->notify_vq);
 }
 
-static void rx_queue_fini(struct ports_device *d)
+static void rx_queue_fini(struct virtio_lo_test_device *d)
 {
 	MTRACE();
 	queue_fini(d->rx_vq);
@@ -304,7 +304,7 @@ error:
 	return ret;
 }
 
-static int notify_queue_init(struct ports_device *d)
+static int notify_queue_init(struct virtio_lo_test_device *d)
 {
 	MTRACE();
 	int ret = queue_init(d->notify_vq, d->notify_buffers, NOTIFY_BUFFERS_LEN);
@@ -320,7 +320,7 @@ static int notify_queue_init(struct ports_device *d)
 	return 0;
 }
 
-static int rx_queue_init(struct ports_device *d)
+static int rx_queue_init(struct virtio_lo_test_device *d)
 {
 	MTRACE();
 	int ret = queue_init(d->rx_vq, d->rx_buffers, RX_BUFFERS_LEN);
@@ -338,8 +338,8 @@ static int rx_queue_init(struct ports_device *d)
 
 static inline void intr(struct virtqueue *vq)
 {
-	struct ports_device *portdev = vq->vdev->priv;
-	bool ret = queue_work(portdev->wq, &portdev->work);
+	struct virtio_lo_test_device *dev = vq->vdev->priv;
+	bool ret = queue_work(dev->wq, &dev->work);
 	if (!ret)
 		MTRACE("already in queue");
 }
@@ -375,11 +375,11 @@ static void device_config_changed(struct virtio_device *vdev)
 
 static void device_remove(struct virtio_device *vdev)
 {
-	struct ports_device *portdev;
+	struct virtio_lo_test_device *dev;
 
-	portdev = vdev->priv;
+	dev = vdev->priv;
 
-	MTRACE("portdev=%p", portdev);
+	MTRACE("dev=%p", dev);
 
 	/* Device is going away, exit any polling for buffers */
 	virtio_break_device(vdev);
@@ -387,13 +387,13 @@ static void device_remove(struct virtio_device *vdev)
 	/* Disable interrupts for vqs */
 	virtio_reset_device(vdev);
 
-	destroy_workqueue(portdev->wq);
+	destroy_workqueue(dev->wq);
 
 	MTRACE("notify_queue_fini()");
-	notify_queue_fini(portdev);
-	rx_queue_fini(portdev);
+	notify_queue_fini(dev);
+	rx_queue_fini(dev);
 
-	kfree(portdev);
+	kfree(dev);
 	vdev->priv = NULL;
 
 	MTRACE("ok");
@@ -402,7 +402,7 @@ static void device_remove(struct virtio_device *vdev)
 static int device_probe(struct virtio_device *vdev)
 {
 	static unsigned int serial = 0;
-	struct ports_device *portdev;
+	struct virtio_lo_test_device *dev;
 	vq_callback_t *io_callbacks[] = {
 		[VIRTIO_TEST_QUEUE_RX]     = rx_intr,
 		[VIRTIO_TEST_QUEUE_TX]     = tx_intr,
@@ -423,16 +423,16 @@ static int device_probe(struct virtio_device *vdev)
 	/* Ensure to read early_put_chars now */
 	barrier();
 
-	portdev = kmalloc(sizeof(*portdev), GFP_KERNEL);
-	if (!portdev)
+	dev = kmalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
 		return -ENOMEM;
 
-	/* Attach this portdev to this virtio_device, and vice-versa. */
-	portdev->vdev = vdev;
-	vdev->priv = portdev;
+	/* Attach this dev to this virtio_device, and vice-versa. */
+	dev->vdev = vdev;
+	vdev->priv = dev;
 
 	/* Find the queues. */
-	err = virtio_find_vqs(portdev->vdev, VIRTIO_TEST_QUEUE_MAX, vqs,
+	err = virtio_find_vqs(dev->vdev, VIRTIO_TEST_QUEUE_MAX, vqs,
 			      io_callbacks,
 			      io_names, NULL);
 	if (err) {
@@ -440,44 +440,44 @@ static int device_probe(struct virtio_device *vdev)
 		goto error_free;
 	}
 
-	portdev->notify_vq = vqs[VIRTIO_TEST_QUEUE_NOTIFY];
-	portdev->ctrl_vq   = vqs[VIRTIO_TEST_QUEUE_CTRL];
-	portdev->rx_vq     = vqs[VIRTIO_TEST_QUEUE_RX];
-	portdev->tx_vq     = vqs[VIRTIO_TEST_QUEUE_TX];
+	dev->notify_vq = vqs[VIRTIO_TEST_QUEUE_NOTIFY];
+	dev->ctrl_vq   = vqs[VIRTIO_TEST_QUEUE_CTRL];
+	dev->rx_vq     = vqs[VIRTIO_TEST_QUEUE_RX];
+	dev->tx_vq     = vqs[VIRTIO_TEST_QUEUE_TX];
 
-	err = notify_queue_init(portdev);
+	err = notify_queue_init(dev);
 	if (err) {
 		MTRACE("notify_queue_init()");
 		goto error_free;
 	}
 
-	err = rx_queue_init(portdev);
+	err = rx_queue_init(dev);
 	if (err) {
 		MTRACE("rx_queue_init()");
 		goto error_notify_queue_fini;
 	}
 
-	// MTRACE("virtio-lo-test-%p (should be 0x%lx)", portdev, (long unsigned int)portdev);
-	portdev->wq = alloc_ordered_workqueue("virtio-lo-test-%u", 0, serial++);
-	if (!portdev->wq) {
+	// MTRACE("virtio-lo-test-%p (should be 0x%lx)", dev, (long unsigned int)dev);
+	dev->wq = alloc_ordered_workqueue("virtio-lo-test-%u", 0, serial++);
+	if (!dev->wq) {
 		MTRACE("alloc_ordered_workqueue()");
 		goto error_rx_queue_fini;
 
 	}
 
-	INIT_WORK(&portdev->work, work_func);
+	INIT_WORK(&dev->work, work_func);
 
-	virtio_device_ready(portdev->vdev);
+	virtio_device_ready(dev->vdev);
 
 	MTRACE("ok");
 	return 0;
 
 error_rx_queue_fini:
-	rx_queue_fini(portdev);
+	rx_queue_fini(dev);
 error_notify_queue_fini:
-	notify_queue_fini(portdev);
+	notify_queue_fini(dev);
 error_free:
-	kfree(portdev);
+	kfree(dev);
 	vdev->priv = NULL;
 	MTRACE("error: %d", err);
 	return err;
