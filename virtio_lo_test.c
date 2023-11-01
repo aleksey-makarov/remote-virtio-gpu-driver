@@ -108,7 +108,9 @@ static struct randbuffer *randbuffer_alloc(void)
 
 	MTRACE("new buffer @%p, len=%u", rb, rb->len);
 	for (i = 0; i < rb->len; i++) {
-		MTRACE("%u@%u", rb->sg[i].length, rb->sg[i].offset);
+		MTRACE("0x%04x@[0x%04x..0x%04x]",
+			rb->sg[i].length, rb->sg[i].offset,
+			rb->sg[i].offset + rb->sg[i].length - 1);
 	}
 
 	return rb;
@@ -516,7 +518,9 @@ static int __init virtio_lo_test_init(void)
 	MTRACE();
 
 	// to test this and silence warnings
-	randbuffer_free(randbuffer_alloc());
+	MTRACE("PAGE_SIZE: 0x%08lx", PAGE_SIZE);
+	for (unsigned int i = 0; i < 20; i++)
+		randbuffer_free(randbuffer_alloc());
 
 	err = register_virtio_driver(&virtio_lo_test);
 	if (err < 0) {
