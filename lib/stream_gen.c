@@ -5,20 +5,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-struct stream_gen_state {
-	uint32_t state;
-	union {
-		uint32_t last;
-		unsigned char last_bytes[4];
-	};
-	unsigned long position;
-};
-
-struct stream_gen {
-	struct stream_gen_state gen;
-	struct stream_gen_state test;
-};
-
 /* https://en.wikipedia.org/wiki/Xorshift */
 static uint32_t xorshift32(uint32_t *state)
 {
@@ -30,30 +16,16 @@ static uint32_t xorshift32(uint32_t *state)
 	return *state = x;
 }
 
-struct stream_gen *stream_gen_init(uint32_t seed)
+void stream_gen_init(struct stream_gen *gen, uint32_t seed)
 {
 	assert(seed);
 
-	struct stream_gen *sg = malloc(sizeof(struct stream_gen));
-	if (!sg) {
-		trace_err("malloc()");
-		return 0;
-	}
-
-	sg->gen.state = sg->test.state = seed;
-	sg->gen.position = sg->test.position = 0;
-
-	return sg;
+	gen->state = seed;
+	gen->position = 0;
 }
 
-void stream_gen_done(struct stream_gen *sg)
+void stream_gen(struct stream_gen *st, void *vp, unsigned int len)
 {
-	free(sg);
-}
-
-void stream_gen(struct stream_gen *sg, void *vp, unsigned int len)
-{
-	struct stream_gen_state *st = &sg->gen;
 	unsigned char *p = vp;
 
 	while (len) {
@@ -69,9 +41,8 @@ void stream_gen(struct stream_gen *sg, void *vp, unsigned int len)
 	}
 }
 
-int stream_gen_test(struct stream_gen *sg, void *vp, unsigned int len)
+int stream_gen_test(struct stream_gen *st, void *vp, unsigned int len)
 {
-	struct stream_gen_state *st = &sg->gen;
 	unsigned char *p = vp;
 
 	while (len) {
