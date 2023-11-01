@@ -157,9 +157,40 @@ static void receive(struct virtio_lo_test_device *d, void *data, unsigned int le
 	MTRACE("%*pE (%u)", lenx, data, len);
 }
 
-static void work_func(struct work_struct *work)
+static void work_func_rx(struct virtio_lo_test_device *d)
 {
-	struct virtio_lo_test_device *d = work_to_virtio_lo_test_device(work);
+	int err;
+	bool kick;
+
+	kick = false;
+	while (1) {
+		unsigned int len;
+		struct scatterlist *sg = virtqueue_get_buf(d->rx_vq, &len);
+		if (!sg)
+			break;
+
+		void *rx = sg_virt(sg);
+		receive(d, rx, len);
+
+		err = virtqueue_add_inbuf(d->rx_vq, sg, 1, sg, GFP_KERNEL);
+		if (err < 0) {
+			MTRACE("* rx virtqueue_add_inbuf(): %d", err);
+			__free_page(sg_page(sg));
+			if (--d->rx_buffers_n < RX_BUFFERS_MIN) {
+				// FIXME: should stop
+				MTRACE("* critical number of rx buffers: %u", d->rx_buffers_n);
+			}
+			continue;
+		}
+		kick = true;
+	}
+
+	if (kick)
+		virtqueue_kick(d->rx_vq);
+}
+
+static void work_func_notify(struct virtio_lo_test_device *d)
+{
 	int err;
 	bool kick;
 
@@ -198,32 +229,13 @@ static void work_func(struct work_struct *work)
 
 	if (kick)
 		virtqueue_kick(d->notify_vq);
+}
 
-	kick = false;
-	while (1) {
-		unsigned int len;
-		struct scatterlist *sg = virtqueue_get_buf(d->rx_vq, &len);
-		if (!sg)
-			break;
-
-		void *rx = sg_virt(sg);
-		receive(d, rx, len);
-
-		err = virtqueue_add_inbuf(d->rx_vq, sg, 1, sg, GFP_KERNEL);
-		if (err < 0) {
-			MTRACE("* rx virtqueue_add_inbuf(): %d", err);
-			__free_page(sg_page(sg));
-			if (--d->rx_buffers_n < RX_BUFFERS_MIN) {
-				// FIXME: should stop
-				MTRACE("* critical number of rx buffers: %u", d->rx_buffers_n);
-			}
-			continue;
-		}
-		kick = true;
-	}
-
-	if (kick)
-		virtqueue_kick(d->rx_vq);
+static void work_func(struct work_struct *work)
+{
+	struct virtio_lo_test_device *d = work_to_virtio_lo_test_device(work);
+	work_func_notify(d);
+	work_func_rx(d);
 }
 
 static void sg_init_one_page(struct scatterlist *sg, struct page *p)
