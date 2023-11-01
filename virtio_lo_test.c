@@ -28,6 +28,13 @@
 #define MTRACE_FILE "virtio_lo_test.c"
 #include "mtrace.h"
 
+#define assert(x) BUG_ON(x)
+#define trace_err(x, ...) MTRACE("* " x, __VA_ARGS__)
+#include "lib/stream_gen.h"
+#include "lib/stream_gen_impl.c"
+#undef assert
+#undef trace_err
+
 struct virtio_lo_test_device {
 	struct virtio_device *vdev;
 
