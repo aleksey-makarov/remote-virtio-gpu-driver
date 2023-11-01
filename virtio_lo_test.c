@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
 #include <linux/virtio_config.h>
+#include <linux/minmax.h>
 
 #include "lib/test.h"
 
@@ -44,16 +45,16 @@ struct virtio_lo_test_device {
 	/*
 	 * RX
 	 */
-#define RX_BUFFERS_LEN 8
-#define RX_BUFFERS_MIN 2
-	struct scatterlist rx_buffers[RX_BUFFERS_LEN];
-	unsigned int rx_buffers_n;
 	struct virtqueue *rx_vq;
+	struct stream_gen rx_stream;
+	struct randbuffer *rx_buf;
 
 	/*
 	 * TX
 	 */
 	struct virtqueue *tx_vq;
+	struct stream_gen tx_stream;
+	struct randbuffer *tx_buf;
 
 	/*
 	 * NOTIFY
@@ -157,43 +158,109 @@ static void notify_stop(struct virtio_lo_test_device *d)
 	MTRACE();
 }
 
-static void receive(struct virtio_lo_test_device *d, void *data, unsigned int len)
-{
-	(void)d;
-	int lenx = min(32, (int)len);
-	MTRACE("%*pE (%u)", lenx, data, len);
-}
-
 static void work_func_rx(struct virtio_lo_test_device *d)
 {
-	int err;
 	bool kick;
+	int err;
 
 	kick = false;
 	while (1) {
+		struct scatterlist *sg;
 		unsigned int len;
-		struct scatterlist *sg = virtqueue_get_buf(d->rx_vq, &len);
-		if (!sg)
+		unsigned int i;
+
+		struct randbuffer *rb = virtqueue_get_buf(d->rx_vq, &len);
+		if (!rb)
 			break;
 
-		void *rx = sg_virt(sg);
-		receive(d, rx, len);
-
-		err = virtqueue_add_inbuf(d->rx_vq, sg, 1, sg, GFP_KERNEL);
-		if (err < 0) {
-			MTRACE("* rx virtqueue_add_inbuf(): %d", err);
-			__free_page(sg_page(sg));
-			if (--d->rx_buffers_n < RX_BUFFERS_MIN) {
-				// FIXME: should stop
-				MTRACE("* critical number of rx buffers: %u", d->rx_buffers_n);
+		for_each_sg(rb->sg, sg, rb->len, i) {
+			if (!len)
+				break;
+			unsigned int l = min(len, sg->length);
+			err = stream_gen_test(&d->rx_stream, sg_virt(sg), l);
+			if (err) {
+				MTRACE("*** error");
+				// FIXME: switch to error state
+				break;
 			}
-			continue;
+			len -= l;
+		}
+
+		randbuffer_free(rb);
+	}
+
+	while (1) {
+
+		struct randbuffer *rb;
+		if (d->rx_buf) {
+			rb = d->rx_buf;
+			d->rx_buf = NULL;
+		} else {
+			rb = randbuffer_alloc();
+			if (err) {
+				MTRACE("* randbuffer_alloc()");
+				// FIXME: switch to error state
+				break;
+			}
+		}
+
+		err = virtqueue_add_inbuf(d->rx_vq, rb->sg, rb->len, rb, GFP_KERNEL);
+		if (err < 0) {
+			d->rx_buf = rb;
+			break;
 		}
 		kick = true;
 	}
 
 	if (kick)
 		virtqueue_kick(d->rx_vq);
+}
+
+static void work_func_tx(struct virtio_lo_test_device *d)
+{
+	bool kick;
+	int err;
+
+	kick = false;
+	while (1) {
+		unsigned int len;
+		struct randbuffer *rb = virtqueue_get_buf(d->tx_vq, &len);
+		if (!rb)
+			break;
+
+		randbuffer_free(rb);
+	}
+
+	while (1) {
+		struct scatterlist *sg;
+		unsigned int i;
+		struct randbuffer *rb;
+
+		if (d->tx_buf) {
+			rb = d->tx_buf;
+			d->tx_buf = NULL;
+		} else {
+			rb = randbuffer_alloc();
+			if (err) {
+				MTRACE("* randbuffer_alloc()");
+				// FIXME: switch to error state
+				break;
+			}
+			for_each_sg(rb->sg, sg, rb->len, i) {
+				stream_gen(&d->tx_stream, sg_virt(sg), sg->length);
+			}
+		}
+
+		err = virtqueue_add_inbuf(d->tx_vq, rb->sg, rb->len, rb, GFP_KERNEL);
+		if (err < 0) {
+			d->tx_buf = rb;
+			break;
+		}
+		kick = true;
+	}
+
+	if (kick)
+		virtqueue_kick(d->tx_vq);
 }
 
 static void work_func_notify(struct virtio_lo_test_device *d)
@@ -243,6 +310,7 @@ static void work_func(struct work_struct *work)
 	struct virtio_lo_test_device *d = work_to_virtio_lo_test_device(work);
 	work_func_notify(d);
 	work_func_rx(d);
+	work_func_tx(d);
 }
 
 static void sg_init_one_page(struct scatterlist *sg, struct page *p)
@@ -271,6 +339,24 @@ static void queue_fini(struct virtqueue *q)
 	}
 }
 
+static void queue_fini_randbuffer(struct virtqueue *q)
+{
+	while (1) {
+		unsigned int len;
+		struct randbuffer *rb = virtqueue_get_buf(q, &len);
+		if (!rb)
+			break;
+		randbuffer_free(rb);
+	}
+
+	while (1) {
+		struct randbuffer *rb = virtqueue_detach_unused_buf(q);
+		if (!rb)
+			break;
+		randbuffer_free(rb);
+	}
+}
+
 static void notify_queue_fini(struct virtio_lo_test_device *d)
 {
 	MTRACE();
@@ -280,7 +366,7 @@ static void notify_queue_fini(struct virtio_lo_test_device *d)
 static void rx_queue_fini(struct virtio_lo_test_device *d)
 {
 	MTRACE();
-	queue_fini(d->rx_vq);
+	queue_fini_randbuffer(d->rx_vq);
 }
 
 static int queue_init(struct virtqueue *q, struct scatterlist *sgs, unsigned int sgs_len)
@@ -338,22 +424,6 @@ static int notify_queue_init(struct virtio_lo_test_device *d)
 		return -ENODEV;
 	}
 	d->notify_buffers_n = ret;
-	return 0;
-}
-
-static int rx_queue_init(struct virtio_lo_test_device *d)
-{
-	MTRACE();
-	int ret = queue_init(d->rx_vq, d->rx_buffers, RX_BUFFERS_LEN);
-	if (ret < 0)
-		return ret;
-	if (ret < RX_BUFFERS_MIN) {
-		dev_err(&d->vdev->dev, "virtqueue_add_inbuf(): %d", ret);
-		MTRACE("");
-		queue_fini(d->rx_vq);
-		return -ENODEV;
-	}
-	d->rx_buffers_n = ret;
 	return 0;
 }
 
@@ -461,10 +531,21 @@ static int device_probe(struct virtio_device *vdev)
 		goto error_free;
 	}
 
-	dev->notify_vq = vqs[VIRTIO_TEST_QUEUE_NOTIFY];
-	dev->ctrl_vq   = vqs[VIRTIO_TEST_QUEUE_CTRL];
 	dev->rx_vq     = vqs[VIRTIO_TEST_QUEUE_RX];
 	dev->tx_vq     = vqs[VIRTIO_TEST_QUEUE_TX];
+	dev->notify_vq = vqs[VIRTIO_TEST_QUEUE_NOTIFY];
+	dev->ctrl_vq   = vqs[VIRTIO_TEST_QUEUE_CTRL];
+
+	unsigned int seed;
+	do
+		get_random_bytes(&seed, sizeof(seed));
+	while(seed == 0);
+
+	stream_gen_init(&dev->rx_stream, seed);
+	stream_gen_init(&dev->tx_stream, seed);
+
+	dev->rx_buf = NULL;
+	dev->tx_buf = NULL;
 
 	err = notify_queue_init(dev);
 	if (err) {
@@ -472,17 +553,11 @@ static int device_probe(struct virtio_device *vdev)
 		goto error_free;
 	}
 
-	err = rx_queue_init(dev);
-	if (err) {
-		MTRACE("rx_queue_init()");
-		goto error_notify_queue_fini;
-	}
-
 	// MTRACE("virtio-lo-test-%p (should be 0x%lx)", dev, (long unsigned int)dev);
 	dev->wq = alloc_ordered_workqueue("virtio-lo-test-%u", 0, serial++);
 	if (!dev->wq) {
 		MTRACE("alloc_ordered_workqueue()");
-		goto error_rx_queue_fini;
+		goto error_notify_queue_fini;
 
 	}
 
@@ -493,8 +568,6 @@ static int device_probe(struct virtio_device *vdev)
 	MTRACE("ok");
 	return 0;
 
-error_rx_queue_fini:
-	rx_queue_fini(dev);
 error_notify_queue_fini:
 	notify_queue_fini(dev);
 error_free:
