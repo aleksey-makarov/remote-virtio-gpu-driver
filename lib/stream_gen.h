@@ -1,8 +1,6 @@
 #ifndef __stream_gen_h__
 #define __stream_gen_h__
 
-#include <stdint.h>
-
 struct stream_gen {
 	uint32_t state;
 	union {
