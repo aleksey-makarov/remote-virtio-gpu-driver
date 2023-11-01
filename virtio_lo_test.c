@@ -127,6 +127,11 @@ struct randbuffer {
 static struct randbuffer *randbuffer_alloc(void)
 {
 	struct randbuffer *rb = kmalloc(sizeof(struct randbuffer), GFP_KERNEL);
+	if (!rb) {
+		MTRACE("kmalloc()");
+		return NULL;
+	}
+
 	unsigned int i;
 
 	unsigned char len;
