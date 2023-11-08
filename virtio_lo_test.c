@@ -41,6 +41,11 @@ struct virtio_lo_test_device {
 
 	struct workqueue_struct *wq;
 	struct work_struct work;
+	enum {
+		STATE_DOWN,
+		STATE_ECHO,
+		STATE_ECHO_DOWN,
+	} state;
 
 	/*
 	 * RX
@@ -48,6 +53,8 @@ struct virtio_lo_test_device {
 	struct virtqueue *rx_vq;
 	struct stream_gen rx_stream;
 	struct randbuffer *rx_buf;
+	unsigned long rx_count;
+	int rx_inflight;
 
 	/*
 	 * TX
@@ -55,6 +62,8 @@ struct virtio_lo_test_device {
 	struct virtqueue *tx_vq;
 	struct stream_gen tx_stream;
 	struct randbuffer *tx_buf;
+	unsigned long int tx_count;
+	int tx_inflight;
 
 	/*
 	 * NOTIFY
@@ -73,7 +82,8 @@ struct virtio_lo_test_device {
 
 #define RANDBUFFER_MAX_LENGTH 8
 struct randbuffer {
-	unsigned int len;
+	unsigned int sgn;
+	unsigned int capacity;
 	struct scatterlist sg[RANDBUFFER_MAX_LENGTH];
 };
 
@@ -89,11 +99,12 @@ static struct randbuffer *randbuffer_alloc(void)
 
 	unsigned char len;
 	get_random_bytes(&len, sizeof(len));
-	rb->len = (unsigned int)(len % (RANDBUFFER_MAX_LENGTH - 1)) + 1;
+	rb->sgn = (unsigned int)(len % (RANDBUFFER_MAX_LENGTH - 1)) + 1;
+	rb->capacity = 0;
 
-	sg_init_table(rb->sg, rb->len);
+	sg_init_table(rb->sg, rb->sgn);
 
-	for (i = 0; i < rb->len; i++) {
+	for (i = 0; i < rb->sgn; i++) {
 
 		struct scatterlist *sg = rb->sg + i;
 
@@ -112,10 +123,11 @@ static struct randbuffer *randbuffer_alloc(void)
 		offset = offset % (PAGE_SIZE - length);
 
 		sg_set_page(sg, p, length, offset);
+		rb->capacity += length;
 	}
 
-	MTRACE("new buffer @%p, len=%u", rb, rb->len);
-	for (i = 0; i < rb->len; i++) {
+	MTRACE("new buffer @%p, sgn=%u, capacity=0x%x", rb, rb->sgn, rb->capacity);
+	for (i = 0; i < rb->sgn; i++) {
 		MTRACE("0x%04x@[0x%04x..0x%04x]",
 			rb->sg[i].length, rb->sg[i].offset,
 			rb->sg[i].offset + rb->sg[i].length - 1);
@@ -134,7 +146,7 @@ error:
 
 static void randbuffer_free(struct randbuffer *rb)
 {
-	for (unsigned int i = 0; i < rb->len; i++) {
+	for (unsigned int i = 0; i < rb->sgn; i++) {
 		struct page *p = sg_page(rb->sg + i);
 		__free_page(p);
 	}
@@ -146,16 +158,47 @@ static inline struct virtio_lo_test_device *work_to_virtio_lo_test_device(struct
 	return container_of(w, struct virtio_lo_test_device, work);
 }
 
+static void work_func_tx(struct virtio_lo_test_device *d);
+
 static void notify_start(struct virtio_lo_test_device *d)
 {
-	(void)d;
 	MTRACE();
+
+	unsigned int seed;
+
+	if (d->state != STATE_DOWN) {
+		MTRACE("wrong state");
+		return;
+	}
+
+	do
+		get_random_bytes(&seed, sizeof(seed));
+	while(seed == 0);
+
+	stream_gen_init(&d->rx_stream, seed);
+	stream_gen_init(&d->tx_stream, seed);
+
+	d->rx_buf = d->tx_buf = NULL;
+	d->rx_inflight = d->tx_inflight = 0;
+	d->rx_count = d->tx_count = 0;
+
+	d->state = STATE_ECHO;
+
+	work_func_tx(d);
 }
 
 static void notify_stop(struct virtio_lo_test_device *d)
 {
-	(void)d;
 	MTRACE();
+
+	if (d->state != STATE_ECHO) {
+		MTRACE("wrong state");
+		return;
+	}
+
+	d->state = STATE_ECHO_DOWN;
+
+	// FIXME: set up an alarm
 }
 
 static void work_func_rx(struct virtio_lo_test_device *d)
@@ -173,7 +216,8 @@ static void work_func_rx(struct virtio_lo_test_device *d)
 		if (!rb)
 			break;
 
-		for_each_sg(rb->sg, sg, rb->len, i) {
+		d->rx_inflight--;
+		for_each_sg(rb->sg, sg, rb->sgn, i) {
 			if (!len)
 				break;
 			unsigned int l = min(len, sg->length);
@@ -184,13 +228,27 @@ static void work_func_rx(struct virtio_lo_test_device *d)
 				break;
 			}
 			len -= l;
+			d->rx_count += l;
 		}
 
 		randbuffer_free(rb);
 	}
 
-	while (1) {
+	if (d->state == STATE_ECHO_DOWN) {
+		if (d->rx_count == d->tx_count) {
+			if (d->tx_inflight || d->rx_inflight) {
+				// FIXME: bug
+				MTRACE("* tx_inflight=%d, rx_inflight=%d", d->tx_inflight, d->rx_inflight);
+			}
+			d->state = STATE_DOWN;
+		}
+		return;
+	}
 
+	if (d->state != STATE_ECHO)
+		return;
+
+	while (1) {
 		struct randbuffer *rb;
 		if (d->rx_buf) {
 			rb = d->rx_buf;
@@ -204,11 +262,12 @@ static void work_func_rx(struct virtio_lo_test_device *d)
 			}
 		}
 
-		err = virtqueue_add_inbuf(d->rx_vq, rb->sg, rb->len, rb, GFP_KERNEL);
+		err = virtqueue_add_inbuf(d->rx_vq, rb->sg, rb->sgn, rb, GFP_KERNEL);
 		if (err < 0) {
 			d->rx_buf = rb;
 			break;
 		}
+		d->rx_inflight++;
 		kick = true;
 	}
 
@@ -228,8 +287,12 @@ static void work_func_tx(struct virtio_lo_test_device *d)
 		if (!rb)
 			break;
 
+		d->tx_inflight--;
 		randbuffer_free(rb);
 	}
+
+	if (d->state != STATE_ECHO)
+		return;
 
 	while (1) {
 		struct scatterlist *sg;
@@ -246,16 +309,18 @@ static void work_func_tx(struct virtio_lo_test_device *d)
 				// FIXME: switch to error state
 				break;
 			}
-			for_each_sg(rb->sg, sg, rb->len, i) {
+			for_each_sg(rb->sg, sg, rb->sgn, i) {
 				stream_gen(&d->tx_stream, sg_virt(sg), sg->length);
 			}
 		}
 
-		err = virtqueue_add_inbuf(d->tx_vq, rb->sg, rb->len, rb, GFP_KERNEL);
+		err = virtqueue_add_inbuf(d->tx_vq, rb->sg, rb->sgn, rb, GFP_KERNEL);
 		if (err < 0) {
 			d->tx_buf = rb;
 			break;
 		}
+		d->tx_inflight++;
+		d->tx_count += rb->capacity;
 		kick = true;
 	}
 
@@ -522,6 +587,8 @@ static int device_probe(struct virtio_device *vdev)
 	dev->vdev = vdev;
 	vdev->priv = dev;
 
+	dev->state = STATE_DOWN;
+
 	/* Find the queues. */
 	err = virtio_find_vqs(dev->vdev, VIRTIO_TEST_QUEUE_MAX, vqs,
 			      io_callbacks,
@@ -535,17 +602,6 @@ static int device_probe(struct virtio_device *vdev)
 	dev->tx_vq     = vqs[VIRTIO_TEST_QUEUE_TX];
 	dev->notify_vq = vqs[VIRTIO_TEST_QUEUE_NOTIFY];
 	dev->ctrl_vq   = vqs[VIRTIO_TEST_QUEUE_CTRL];
-
-	unsigned int seed;
-	do
-		get_random_bytes(&seed, sizeof(seed));
-	while(seed == 0);
-
-	stream_gen_init(&dev->rx_stream, seed);
-	stream_gen_init(&dev->tx_stream, seed);
-
-	dev->rx_buf = NULL;
-	dev->tx_buf = NULL;
 
 	err = notify_queue_init(dev);
 	if (err) {
