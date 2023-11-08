@@ -11,7 +11,7 @@ static uint32_t xorshift32(uint32_t *state)
 
 void stream_gen_init(struct stream_gen *gen, uint32_t seed)
 {
-	assert(seed);
+	assert(seed == 0);
 
 	gen->state = seed;
 	gen->position = 0;
