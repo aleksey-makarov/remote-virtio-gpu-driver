@@ -112,7 +112,7 @@ done:
 
 #endif
 
-static int readfd(int fd)
+static int readfd_uint64(int fd)
 {
 	uint64_t ev;
 	int ret;
@@ -197,9 +197,9 @@ static int rx_test(void *vctxt)
 
 	if (serv_receive_is_running) {
 
-		ret = readfd(ctxt.rx_thread.fd);
+		ret = readfd_uint64(ctxt.rx_thread.fd);
 		if (ret < 0) {
-			trace_err("readfd()");
+			trace_err("readfd_uint64()");
 			return -1;
 		}
 
@@ -385,9 +385,9 @@ static int timer_go(uint32_t events, void *vctxt)
 	static unsigned int n = 0;
 	int ret;
 
-	ret = readfd(ctxt.timer_thread.fd);
+	ret = readfd_uint64(ctxt.timer_thread.fd);
 	if (ret < 0) {
-		trace_err("readfd()");
+		trace_err("readfd_uint64()");
 		return -1;
 	}
 
