@@ -126,12 +126,12 @@ static struct randbuffer *randbuffer_alloc(void)
 		rb->capacity += length;
 	}
 
-	MTRACE("new buffer @%p, sgn=%u, capacity=0x%x", rb, rb->sgn, rb->capacity);
-	for (i = 0; i < rb->sgn; i++) {
-		MTRACE("0x%04x@[0x%04x..0x%04x]",
-			rb->sg[i].length, rb->sg[i].offset,
-			rb->sg[i].offset + rb->sg[i].length - 1);
-	}
+	// MTRACE("new buffer @%p, sgn=%u, capacity=0x%x", rb, rb->sgn, rb->capacity);
+	// for (i = 0; i < rb->sgn; i++) {
+	// 	MTRACE("0x%04x@[0x%04x..0x%04x]",
+	// 		rb->sg[i].length, rb->sg[i].offset,
+	// 		rb->sg[i].offset + rb->sg[i].length - 1);
+	// }
 
 	return rb;
 
@@ -255,7 +255,7 @@ static void work_func_rx(struct virtio_lo_test_device *d)
 			d->rx_buf = NULL;
 		} else {
 			rb = randbuffer_alloc();
-			if (err) {
+			if (!rb) {
 				MTRACE("* randbuffer_alloc()");
 				// FIXME: switch to error state
 				break;
@@ -304,7 +304,7 @@ static void work_func_tx(struct virtio_lo_test_device *d)
 			d->tx_buf = NULL;
 		} else {
 			rb = randbuffer_alloc();
-			if (err) {
+			if (!rb) {
 				MTRACE("* randbuffer_alloc()");
 				// FIXME: switch to error state
 				break;
@@ -314,7 +314,7 @@ static void work_func_tx(struct virtio_lo_test_device *d)
 			}
 		}
 
-		err = virtqueue_add_inbuf(d->tx_vq, rb->sg, rb->sgn, rb, GFP_KERNEL);
+		err = virtqueue_add_outbuf(d->tx_vq, rb->sg, rb->sgn, rb, GFP_KERNEL);
 		if (err < 0) {
 			d->tx_buf = rb;
 			break;
