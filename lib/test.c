@@ -26,91 +26,103 @@ static const char *q_name(int q)
 
 #endif
 
-static bool serv_receive_is_running = false;
+#define K 1024
+#define M (K * K)
+#define BUF_LEN (64 * M)
 
-static int serv_receive(struct vlo_buf *req)
+static char buf[BUF_LEN];
+static unsigned long int buf_data;  // first occupied by data
+static unsigned long int buf_empty; // first empty: always buf_data <= buf_empty
+
+static void serv_reset(void)
 {
-#define BUF_LEN 30
-	char buf[BUF_LEN];
-	int ret;
-
-	static unsigned int n = 0;
-
-	if (req->io[0].iov_len < BUF_LEN) {
-		trace_err("buffer is too short");
-		ret = -1;
-		goto done;
-	}
-
-	ret = snprintf(buf, BUF_LEN, "Hello world %u\n", n++);
-	if (ret < 0) {
-		trace_err("snprintf()");
-		goto done;
-	}
-
-	memcpy(req->io[0].iov_base, buf, ret);
-
-done:
-	return ret;
+	buf_data = buf_empty = 0;
 }
 
-#if 0
-static inline unsigned int umin(unsigned int a, unsigned int b)
+static unsigned long int serv_data_length(void)
 {
-	return a <= b ? a : b;
+	return buf_empty - buf_data;
 }
 
-/* guest transmit, i. e. we receive */
-static int serv_transmit(struct vlo_buf *req)
+static unsigned long int serv_free_space(void)
 {
-#define BUFX_LEN 10
-	char bufx[BUFX_LEN];
+	return BUF_LEN - serv_data_length();
+}
+
+static unsigned int min_ui(unsigned int a, unsigned int b)
+{
+	return a < b ? a : b;
+}
+
+static int serv_put(char *data, unsigned int length)
+{
+	if (serv_free_space() < length) {
+		trace_err("free=%lu, length=%u", serv_free_space(), length);
+		return -1;
+	}
+
+	unsigned int buf_empty_index = buf_empty % BUF_LEN;
+	unsigned int length1 = min_ui(length, BUF_LEN - buf_empty_index);
+
+	memcpy(buf + buf_empty_index, data, length1);
+
+	if (length1 != length)
+		memcpy(buf, data + length1, length - length1);
+
+	buf_empty += length;
+
+	return 0;
+}
+
+static int serv_put_buf(struct vlo_buf *req)
+{
 	unsigned int i;
+	int err;
 
 	for (i = 0; i < req->ion; i++) {
-		int len = umin(req->io[i].iov_len, BUFX_LEN - 1);
-		memcpy(bufx, req->io[i].iov_base, len);
-		bufx[len] = 0;
-		trace("%u: %lu \'%s\'", i, req->io[i].iov_len, bufx);
+		err = serv_put(req->io[i].iov_base, req->io[i].iov_len);
+		if (err) {
+			trace_err("error @%u", i);
+			return err;
+		}
 	}
 
 	return 0;
 }
 
-static inline int min(int a, int b)
+static void serv_get(char *data, unsigned int length)
 {
-	return a <= b ? a : b;
+	assert(length <= serv_data_length());
+
+	unsigned int buf_data_index = buf_data % BUF_LEN;
+	unsigned int length1 = min_ui(length, BUF_LEN - buf_data_index);
+
+	memcpy(data, buf + buf_data_index, length1);
+
+	if (length1 != length)
+		memcpy(data + length1, buf, length - length1);
+
+	buf_data += length;
 }
 
-static int transmit1(struct vlo *vl)
+static int serv_get_buf(struct vlo_buf *req)
 {
 	int ret = 0;
+	unsigned int i;
 
-	// trace("*** TRANSMIT");
+	unsigned int available = serv_data_length();
 
-	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_TX);
-	if (!req) {
-		trace_err("vlo_buf_get()");
-		return -1;
+	assert(available > 0);
+
+	for (i = 0; i < req->ion && available; i++) {
+		unsigned int length1 = min_ui(available, req->io[i].iov_len);
+		serv_get(req->io[i].iov_base, length1);
+		ret += length1;
+		available -= length1;
 	}
-
-	trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
-
-	if (req->ion != req->ion_transmit) {
-		trace_err("not all buffers are readable");
-		ret = -1;
-		goto done;
-	}
-
-	ret = serv_transmit(req);
-
-done:
-	vlo_buf_put(req, 0);
 
 	return ret;
 }
-
-#endif
 
 static int readfd_uint64(int fd)
 {
@@ -193,27 +205,21 @@ static void config_done(void *vctxt) { (void)vctxt; }
 static int rx_test(void *vctxt)
 {
 	(void)vctxt;
+
 	int ret;
 
-	if (serv_receive_is_running) {
+	ret = readfd_uint64(ctxt.rx_thread.fd);
+	if (ret < 0) {
+		trace_err("readfd_uint64()");
+		return -1;
+	}
 
-		ret = readfd_uint64(ctxt.rx_thread.fd);
-		if (ret < 0) {
-			trace_err("readfd_uint64()");
-			return -1;
-		}
-
-		if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
-			// trace("buffer is available");
-			return ES_READY;
-		} else {
-			ctxt.rx_thread.events = EPOLLIN;
-			// trace("waiting for buffer");
-			return ES_WAIT;
-		}
+	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
+		// trace("buffer is available");
+		return ES_READY;
 	} else {
-		ctxt.rx_thread.events = 0;
-		// trace("dont send anything");
+		ctxt.rx_thread.events = EPOLLIN;
+		// trace("waiting for buffer");
 		return ES_WAIT;
 	}
 }
@@ -225,7 +231,7 @@ static int rx_go(uint32_t events, void *vctxt)
 
 	int ret;
 
-	// trace();
+	// trace_err("events=0x%x", events);
 
 	assert(vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX));
 
@@ -238,18 +244,22 @@ static int rx_go(uint32_t events, void *vctxt)
 	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
 
 	if (req->ion_transmit != 0) {
-		trace_err("not all buffers are writable");
+		trace_err("not all buffers are readable");
 		ret = -1;
 		goto done;
 	}
 
-	ret = serv_receive(req);
+	ret = serv_get_buf(req);
 	if (ret < 0)
-		goto done;
+		trace_err("serv_put_buf()");
 
 done:
 	vlo_buf_put(req, ret);
-	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
+	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
+
+	// ret = ret < 0 ? -1 : 0;
+	// trace_err("ret=%d", ret);
+	// return ret;
 
 	return ret < 0 ? -1 : 0;
 }
@@ -262,15 +272,69 @@ static void rx_done(void *vctxt) { (void)vctxt; }
 static int tx_test(void *vctxt)
 {
 	(void)vctxt;
-	return ES_WAIT;
+	int ret;
+
+	ret = readfd_uint64(ctxt.rx_thread.fd);
+	if (ret < 0) {
+		trace_err("readfd_uint64()");
+		return -1;
+	}
+
+	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_TX)) {
+		// trace("buffer is available");
+		ctxt.rx_thread.events = 0;
+		return ES_READY;
+	} else {
+		ctxt.rx_thread.events = EPOLLIN;
+		// trace("waiting for buffer");
+		return ES_WAIT;
+	}
 }
 
 static int tx_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
-	trace();
-	return 0;
+
+	int ret;
+
+	// trace();
+
+	static unsigned int bad = 0;
+
+	if (!vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_TX)) {
+		bad++;
+		return 0;
+	}
+
+	if (bad) {
+		trace_err("vlo_buf_is_available(TX), %u", bad);
+		bad = 0;
+	}
+
+	struct vlo_buf *req = vlo_buf_get(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
+	if (!req) {
+		trace_err("vlo_buf_get()");
+		return -1;
+	}
+
+	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
+
+	if (req->ion_transmit != req->ion) {
+		trace_err("not all buffers are writable");
+		ret = -1;
+		goto done;
+	}
+
+	ret = serv_put_buf(req);
+	if (ret < 0)
+		trace_err("serv_put_buf()");
+
+done:
+	vlo_buf_put(req, 0);
+	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
+
+	return ret < 0 ? -1 : 0;
 }
 
 static void tx_done(void *vctxt) { (void)vctxt; }
@@ -392,17 +456,22 @@ static int timer_go(uint32_t events, void *vctxt)
 	}
 
 	// trace("%u", n);
-	ret = send_notification(ctxt.vl, n % 2);
-	if (ret < 0) {
-		trace_err("send_notification()");
-		return -1;
+
+	if (n % 6 == 2) {
+		serv_reset();
+		ret = send_notification(ctxt.vl, VIRTIO_TEST_QUEUE_NOTIFY_START);
+		if (ret < 0) {
+			trace_err("send_notification(START)");
+			return -1;
+		}
 	}
-
-	if (n % 6 == 2)
-		serv_receive_is_running = true;
-	if (n % 6 == 3)
-		serv_receive_is_running = false;
-
+	if (n % 6 == 3) {
+		ret = send_notification(ctxt.vl, VIRTIO_TEST_QUEUE_NOTIFY_STOP);
+		if (ret < 0) {
+			trace_err("send_notification(STOP)");
+			return -1;
+		}
+	}
 
 	n++;
 
