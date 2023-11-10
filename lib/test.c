@@ -214,6 +214,11 @@ static int rx_test(void *vctxt)
 		return -1;
 	}
 
+	if (serv_data_length() == 0) {
+		ctxt.rx_thread.events = 0;
+		return ES_WAIT;
+	}
+
 	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
 		// trace("buffer is available");
 		return ES_READY;
