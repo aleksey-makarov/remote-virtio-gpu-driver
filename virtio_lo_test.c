@@ -373,6 +373,9 @@ static void work_func_notify(struct virtio_lo_test_device *d)
 static void work_func(struct work_struct *work)
 {
 	struct virtio_lo_test_device *d = work_to_virtio_lo_test_device(work);
+
+	MTRACE("tx=0x%016lx, rx=0x%016lx", d->tx_count, d->rx_count);
+
 	work_func_notify(d);
 	work_func_rx(d);
 	work_func_tx(d);
