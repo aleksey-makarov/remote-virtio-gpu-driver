@@ -255,7 +255,7 @@ static int rx_go(uint32_t events, void *vctxt)
 
 done:
 	vlo_buf_put(req, ret);
-	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
+	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
 
 	// ret = ret < 0 ? -1 : 0;
 	// trace_err("ret=%d", ret);
