@@ -665,10 +665,10 @@ static int __init virtio_lo_test_init(void)
 
 	MTRACE();
 
-	// to test this and silence warnings
-	MTRACE("PAGE_SIZE: 0x%08lx", PAGE_SIZE);
-	for (unsigned int i = 0; i < 20; i++)
-		randbuffer_free(randbuffer_alloc());
+	// // to test this and silence warnings
+	// MTRACE("PAGE_SIZE: 0x%08lx", PAGE_SIZE);
+	// for (unsigned int i = 0; i < 20; i++)
+	// 	randbuffer_free(randbuffer_alloc());
 
 	err = register_virtio_driver(&virtio_lo_test);
 	if (err < 0) {
