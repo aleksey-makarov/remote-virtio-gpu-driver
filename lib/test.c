@@ -208,15 +208,15 @@ static int rx_test(void *vctxt)
 
 	int ret;
 
+	if (serv_data_length() == 0) {
+		ctxt.rx_thread.events = 0;
+		return ES_WAIT;
+	}
+
 	ret = readfd_uint64(ctxt.rx_thread.fd);
 	if (ret < 0) {
 		trace_err("readfd_uint64()");
 		return -1;
-	}
-
-	if (serv_data_length() == 0) {
-		ctxt.rx_thread.events = 0;
-		return ES_WAIT;
 	}
 
 	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
