@@ -80,6 +80,16 @@ struct virtio_lo_test_device {
 	struct virtqueue *ctrl_vq;
 };
 
+static const char *state_string(int state)
+{
+	switch (state) {
+	case STATE_DOWN:      return "STATE_DOWN";
+	case STATE_ECHO:      return "STATE_ECHO";
+	case STATE_ECHO_DOWN: return "STATE_ECHO_DOWN";
+	default:              return "?";
+	}
+}
+
 #define RANDBUFFER_MAX_LENGTH 8
 struct randbuffer {
 	unsigned int sgn;
@@ -167,7 +177,7 @@ static void notify_start(struct virtio_lo_test_device *d)
 	unsigned int seed;
 
 	if (d->state != STATE_DOWN) {
-		MTRACE("wrong state");
+		MTRACE("wrong state (state=%s, should be STATE_DOWN)", state_string(d->state));
 		return;
 	}
 
@@ -192,7 +202,7 @@ static void notify_stop(struct virtio_lo_test_device *d)
 	MTRACE();
 
 	if (d->state != STATE_ECHO) {
-		MTRACE("wrong state");
+		MTRACE("wrong state (state=%s, should be STATE_ECHO)", state_string(d->state));
 		return;
 	}
 
