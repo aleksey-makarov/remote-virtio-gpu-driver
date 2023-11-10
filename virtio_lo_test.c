@@ -529,6 +529,20 @@ static void device_config_changed(struct virtio_device *vdev)
 	MTRACE();
 }
 
+static ssize_t start_show(struct device *dev, struct device_attribute *attr,
+                        char *buf)
+{
+        return sysfs_emit(buf, "hello\n");
+}
+
+static ssize_t start_store(struct device *dev, struct device_attribute *attr,
+                        const char *buf, size_t count)
+{
+        return count;
+}
+
+static struct device_attribute dev_attr_start = __ATTR_RW(start);
+
 static void device_remove(struct virtio_device *vdev)
 {
 	struct virtio_lo_test_device *dev;
@@ -536,6 +550,8 @@ static void device_remove(struct virtio_device *vdev)
 	dev = vdev->priv;
 
 	MTRACE("dev=%p", dev);
+
+	device_remove_file(&vdev->dev, &dev_attr_start);
 
 	/* Device is going away, exit any polling for buffers */
 	virtio_break_device(vdev);
@@ -621,8 +637,20 @@ static int device_probe(struct virtio_device *vdev)
 
 	virtio_device_ready(dev->vdev);
 
+	err = device_create_file(&vdev->dev, &dev_attr_start);
+	if (err < 0) {
+		MTRACE("device_create_file()");
+		goto error_stop_device;
+	}
+
 	MTRACE("ok");
 	return 0;
+
+error_stop_device:
+	virtio_break_device(vdev);
+	virtio_reset_device(vdev);
+
+	destroy_workqueue(dev->wq);
 
 error_notify_queue_fini:
 	notify_queue_fini(dev);
