@@ -274,7 +274,7 @@ static int tx_test(void *vctxt)
 	(void)vctxt;
 	int ret;
 
-	ret = readfd_uint64(ctxt.rx_thread.fd);
+	ret = readfd_uint64(ctxt.tx_thread.fd);
 	if (ret < 0) {
 		trace_err("readfd_uint64()");
 		return -1;
@@ -282,10 +282,10 @@ static int tx_test(void *vctxt)
 
 	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_TX)) {
 		// trace("buffer is available");
-		ctxt.rx_thread.events = 0;
+		ctxt.tx_thread.events = 0;
 		return ES_READY;
 	} else {
-		ctxt.rx_thread.events = EPOLLIN;
+		ctxt.tx_thread.events = EPOLLIN;
 		// trace("waiting for buffer");
 		return ES_WAIT;
 	}
