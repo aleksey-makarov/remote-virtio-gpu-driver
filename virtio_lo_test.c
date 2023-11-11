@@ -246,17 +246,14 @@ static void work_func_rx(struct virtio_lo_test_device *d)
 
 	if (d->state == STATE_ECHO_DOWN) {
 		if (d->rx_count == d->tx_count) {
-			if (d->tx_inflight || d->rx_inflight) {
-				// FIXME: bug
-				MTRACE("* tx_inflight=%d, rx_inflight=%d", d->tx_inflight, d->rx_inflight);
-			}
+			// There could be buffers inflight in rx ring
+			// if (d->tx_inflight || d->rx_inflight) {
+			// 	MTRACE("* tx_inflight=%d, rx_inflight=%d", d->tx_inflight, d->rx_inflight);
+			// }
 			d->state = STATE_DOWN;
+			return;
 		}
-		return;
 	}
-
-	if (d->state != STATE_ECHO)
-		return;
 
 	while (1) {
 		struct randbuffer *rb;
