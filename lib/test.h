@@ -19,9 +19,6 @@ struct virtio_test_config {
 #define VIRTIO_TEST_QUEUE_CTRL   3
 #define VIRTIO_TEST_QUEUE_MAX    4
 
-#define VIRTIO_TEST_QUEUE_NOTIFY_START 0
-#define VIRTIO_TEST_QUEUE_NOTIFY_STOP  1
-
 struct virtio_test_notify {
 	__virtio32 id;
 };

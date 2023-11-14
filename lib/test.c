@@ -460,18 +460,8 @@ static int timer_go(uint32_t events, void *vctxt)
 		return -1;
 	}
 
-	// trace("%u", n);
-
-	if (n % 6 == 2) {
-		serv_reset();
-		ret = send_notification(ctxt.vl, VIRTIO_TEST_QUEUE_NOTIFY_START);
-		if (ret < 0) {
-			trace_err("send_notification(START)");
-			return -1;
-		}
-	}
-	if (n % 6 == 3) {
-		ret = send_notification(ctxt.vl, VIRTIO_TEST_QUEUE_NOTIFY_STOP);
+	if (n % 5 == 0) {
+		ret = send_notification(ctxt.vl, n);
 		if (ret < 0) {
 			trace_err("send_notification(STOP)");
 			return -1;
@@ -548,6 +538,8 @@ int main(int argc, char **argv)
 	struct virtio_test_config config = {
 		.something = 3,
 	};
+
+	serv_reset();
 
 	ctxt.vl = vlo_init(VIRTIO_ID_TEST, 0x1af4, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
 	if (!ctxt.vl) {
