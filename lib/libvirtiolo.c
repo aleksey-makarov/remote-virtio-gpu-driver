@@ -304,8 +304,6 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 
 	req->idx = idx;
 	req->vr = vr;
-	req->mapped = false;
-	req->refcount = 1;
 	req->ion = ion;
 	req->ion_transmit = ion_transmit;
 
@@ -323,8 +321,6 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 		di = vr->vring.desc[di.next % vr->vring.num];
 	}
 
-	req->mapped = true;
-
 	assert( req->ion > 0 );
 	assert( req->ion >= req->ion_transmit );
 
@@ -339,27 +335,6 @@ error:
 	free(req);
 
 	return NULL;
-}
-
-struct vlo_buf *vlo_buf_ref(struct vlo_buf *req)
-{
-	req->refcount++;
-	return req;
-}
-
-/**
- * @brief Decrease the reference count of the request
- * @param q - a reference to the request
- */
-void vlo_buf_unref(struct vlo_buf *req)
-{
-	req->refcount--;
-	if (req->refcount > 0)
-		return;
-
-	assert(!req->mapped);
-	// trace("free %p", req);
-	free(req);
 }
 
 void vlo_buf_put(struct vlo_buf *req, unsigned int resp_len)
@@ -378,8 +353,6 @@ void vlo_buf_put(struct vlo_buf *req, unsigned int resp_len)
 	for (i = 0; i < req->ion; i++)
 		unmap_guest(req->io[i].iov_base, req->io[i].iov_len);
 
-	req->mapped = false;
-
 	/* FIXME: Without this delay, kernel crashes in virtio-gpu driver
 	 * most probable cause is race condition.
 	 * Remove delay when race condition is fixed properly.
@@ -390,7 +363,7 @@ void vlo_buf_put(struct vlo_buf *req, unsigned int resp_len)
 	atomic_store((atomic_uint *)&el->id, req->idx);
 	idx++;
 	atomic_store((atomic_ushort *)&vr->vring.used->idx, idx);
-	vlo_buf_unref(req);
+	free(req);
 }
 
 int vlo_kick(struct vlo *vl, int queue)

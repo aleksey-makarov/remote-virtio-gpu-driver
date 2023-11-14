@@ -14,9 +14,6 @@ struct vlo_buf {
 	uint16_t idx;
 	struct vlo_vring *vr;
 
-	bool mapped;
-	unsigned int refcount;
-
 	/* length of io[] array */
 	unsigned int ion;
 	/*
@@ -45,10 +42,6 @@ void vlo_done(struct vlo *v);
 bool vlo_buf_is_available(struct vlo *vl, unsigned int queue);
 
 struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue);
-
-struct vlo_buf *vlo_buf_ref(struct vlo_buf *req);
-
-void vlo_buf_unref(struct vlo_buf *req);
 
 void vlo_buf_put(struct vlo_buf *req, unsigned int resp_len);
 
