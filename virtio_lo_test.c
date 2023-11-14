@@ -109,6 +109,11 @@ static const char *state_string(struct virtio_lo_test_device *lo)
 	return "???";
 }
 
+static void print_stats(struct virtio_lo_test_device *lo)
+{
+	MTRACE("tx=0x%016lx (%d), rx=0x%016lx (%d)", lo->tx_count, lo->tx_inflight, lo->rx_count, lo->rx_inflight);
+}
+
 #define RANDBUFFER_MAX_LENGTH 8
 struct randbuffer {
 	unsigned int sgn;
@@ -319,6 +324,8 @@ static void work_func_notify(struct virtio_lo_test_device *lo)
 			break;
 
 		struct virtio_test_notify *notify = sg_virt(sg);
+
+		print_stats(lo);
 		MTRACE("notify=%d", notify->id);
 
 		err = virtqueue_add_inbuf(lo->notify_vq, sg, 1, sg, GFP_KERNEL);
@@ -342,7 +349,12 @@ static void work_func(struct work_struct *work)
 {
 	struct virtio_lo_test_device *lo = work_to_virtio_lo_test_device(work);
 
-	MTRACE("tx=0x%016lx, rx=0x%016lx", lo->tx_count, lo->rx_count);
+	// FIXME: incorrect static
+	static unsigned long last_tx = 0;
+	if (lo->tx_count - last_tx > 0x1000000) {
+		print_stats(lo);
+		last_tx = lo->tx_count;
+	}
 
 	work_func_notify(lo);
 	work_func_rx(lo);
@@ -465,9 +477,10 @@ static int notify_queue_init(struct virtio_lo_test_device *lo)
 
 static inline void lo_intr(struct virtio_lo_test_device *lo)
 {
-	bool ret = queue_work(lo->wq, &lo->work);
-	if (!ret)
-		MTRACE("already in queue");
+	// bool ret = queue_work(lo->wq, &lo->work);
+	// if (!ret)
+	// 	MTRACE("already in queue");
+	queue_work(lo->wq, &lo->work);
 }
 
 static inline void intr(struct virtqueue *vq)
@@ -478,13 +491,13 @@ static inline void intr(struct virtqueue *vq)
 
 static void rx_intr(struct virtqueue *vq)
 {
-	MTRACE();
+	// MTRACE();
 	intr(vq);
 }
 
 static void tx_intr(struct virtqueue *vq)
 {
-	MTRACE();
+	// MTRACE();
 	intr(vq);
 }
 
