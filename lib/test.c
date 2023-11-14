@@ -220,6 +220,7 @@ static int rx_test(void *vctxt)
 	}
 
 	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
+		ctxt.rx_thread.events = 0;
 		// trace("buffer is available");
 		return ES_READY;
 	} else {
@@ -238,7 +239,23 @@ static int rx_go(uint32_t events, void *vctxt)
 
 	// trace_err("events=0x%x", events);
 
-	assert(vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX));
+	// assert(vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX));
+
+	static unsigned int bad0 = 0;
+	static unsigned int bad1 = 0;
+
+	if (!vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
+		if (!ctxt.rx_thread.events)
+			bad0++;
+		else
+			bad1++;
+		return 0;
+	}
+
+	if (bad0 || bad1) {
+		trace_err("vlo_buf_is_available(RX), bad0=%u, bad1=%u", bad0, bad1);
+		bad0 = bad1 = 0;
+	}
 
 	struct vlo_buf *req = vlo_buf_get(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
 	if (!req) {
@@ -305,16 +322,21 @@ static int tx_go(uint32_t events, void *vctxt)
 
 	// trace();
 
-	static unsigned int bad = 0;
+	static unsigned int bad0 = 0;
+	static unsigned int bad1 = 0;
 
 	if (!vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_TX)) {
-		bad++;
+		if (!ctxt.tx_thread.events)
+			bad0++;
+		else
+			bad1++;
+
 		return 0;
 	}
 
-	if (bad) {
-		trace_err("vlo_buf_is_available(TX), %u", bad);
-		bad = 0;
+	if (bad0 || bad1) {
+		trace_err("vlo_buf_is_available(TX), bad0=%u, bad1=%u", bad0, bad1);
+		bad0 = bad1 = 0;
 	}
 
 	struct vlo_buf *req = vlo_buf_get(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
