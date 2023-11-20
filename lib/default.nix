@@ -3,6 +3,8 @@
   lib,
   linuxPackages,
   cmake,
+  pkg-config,
+  libnl,
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
@@ -16,8 +18,10 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     cmake
+    pkg-config
     linuxPackages.kernel.dev
     linuxPackages.virtio-lo.dev
+    libnl.dev
   ];
 
   meta = with lib; {
