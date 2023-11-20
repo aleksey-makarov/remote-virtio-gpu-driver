@@ -1,5 +1,5 @@
 {
-  description = "Remote VIRTIO GPU";
+  description = "Virtio Loopback Linux kernel module";
 
   nixConfig.bash-prompt = "[\\033[1;33mvirtio-lo\\033[0m \\w]$ ";
 
@@ -43,7 +43,7 @@
     };
 
     pkgs = (nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay;
-    # pkgs = nixpkgs.legacyPackages.${system}.extend nixGL.overlay;
+    pkgs-nolo = nixpkgs.legacyPackages.${system}.extend nixGL.overlay;
 
     extensions = nix-vscode-extensions.extensions.${system};
 
@@ -68,6 +68,7 @@
     packages.${system} = rec {
       default = libvirtiolo;
       libvirtiolo = pkgs.libvirtiolo;
+      libvirtiolo-dev = pkgs.libvirtiolo.dev;
     };
 
     devShells.${system} = rec {

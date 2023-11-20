@@ -165,6 +165,8 @@ with lib; {
 
       weston
 
+      iproute2
+
       # remote-virtio-gpu
       # remote-virtio-gpu.src
 
