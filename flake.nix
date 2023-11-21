@@ -69,6 +69,7 @@
       default = libvirtiolo;
       libvirtiolo = pkgs.libvirtiolo;
       libvirtiolo-dev = pkgs.libvirtiolo.dev;
+      virtio-lo = myLinuxPackages.virtio-lo;
     };
 
     devShells.${system} = rec {
