@@ -563,7 +563,7 @@ int main(int argc, char **argv)
 
 	serv_reset();
 
-	ctxt.vl = vlo_init(VIRTIO_ID_TEST, 0x1af4, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
+	ctxt.vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
 	if (!ctxt.vl) {
 		trace_err("vlo_init()");
 		goto error;

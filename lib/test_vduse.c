@@ -2,6 +2,9 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <libnl3/netlink/netlink.h>
 #include <libnl3/netlink/cache.h>
@@ -12,11 +15,14 @@
 #include <linux/vdpa.h>
 #include <linux/vduse.h>
 
+#include "test.h"
+
 #define TRACE_FILE "test_vduse.c"
 #include "trace.h"
 
 #define DRIVER_NAME "test"
 
+#if 0
 static int vduse_message_handler(int dev_fd)
 {
 	int len;
@@ -138,17 +144,55 @@ static void *iova_to_va(int dev_fd, uint64_t iova, uint64_t *len)
 
         return addr + iova - entry.start;
 }
+#endif
 
 int main(int argc, char **argv)
 {
+	int err;
+
 	(void)argc;
 	(void)argv;
 
-	trace("Hello world");
+	trace("hello");
 
-	vduse_message_handler(0);
-	netlink_add_vduse(DRIVER_NAME, VDPA_CMD_DEV_NEW);
-	iova_to_va(0, 0, NULL);
+	struct {
+		struct vduse_dev_config cfg;
+		struct virtio_test_config dev_cfg;
+	} vduse_cfg = {
+		.cfg = {
+			.name = "test",
+			.vendor_id = VIRTIO_TEST_VENDOR_ID,
+			.device_id = VIRTIO_ID_TEST,
+			.features = 0,
+			.vq_num = VIRTIO_TEST_QUEUE_MAX,
+			.vq_align = 64, // FIXME
+			.config_size = sizeof(struct virtio_test_config),
+		},
+		.dev_cfg = {
+			.something = 0xdeadbeef12345678,
+		},
+	};
 
+	bzero(&vduse_cfg.cfg.reserved, sizeof(vduse_cfg.cfg.reserved));
+
+	int ioctl_fd = open("/dev/vduse/control", 0);
+	if (ioctl_fd < 0) {
+		trace_err_p("open(/dev/vduse/control)");
+		goto error;
+	}
+
+	err = ioctl(ioctl_fd, VDUSE_CREATE_DEV, &vduse_cfg.cfg);
+	if (err < 0) {
+		trace_err_p("ioctl(VDUSE_CREATE_DEV)");
+		goto error_close_ioctl;
+	}
+
+	trace("exit");
 	exit(EXIT_SUCCESS);
+
+error_close_ioctl:
+	close(ioctl_fd);
+error:
+	trace("exit failure");
+	exit(EXIT_FAILURE);
 }

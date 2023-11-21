@@ -3,7 +3,10 @@
 
 #include <linux/virtio_types.h>
 
+/* device id */
 #define VIRTIO_ID_TEST 111
+/* vendor id */
+#define VIRTIO_TEST_VENDOR_ID 0x1af4
 
 #define VIRTIO_TEST_F_SIZE	0
 #define VIRTIO_TEST_F_MULTIPORT 1
