@@ -34,7 +34,7 @@
         super.linuxKernel
         // {
           packagesFor = kernel_: ((super.linuxKernel.packagesFor kernel_).extend (lpself: lpsuper: {
-            virtio-lo = lpsuper.callPackage ./default.nix {};
+            virtio-lo = lpsuper.callPackage ./modules/default.nix {};
           }));
         };
       libvirtiolo = super.callPackage ./lib/default.nix {
