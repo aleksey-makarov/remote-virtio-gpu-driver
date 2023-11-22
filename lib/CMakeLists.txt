@@ -38,6 +38,11 @@ target_include_directories(test_vduse PRIVATE ${extlibs_INCLUDE_DIRS})
 target_link_libraries(test_vduse PUBLIC ${extlibs_LIBRARIES})
 
 #
+# libvirtiolo
+#
+add_library(vduse MODULE libvduse.c)
+
+#
 # install
 #
 include(GNUInstallDirs)

@@ -37,11 +37,19 @@
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 
-#include "include/atomic.h"
-#include "linux-headers/linux/virtio_ring.h"
-#include "linux-headers/linux/virtio_config.h"
-#include "linux-headers/linux/vduse.h"
+#include <linux/virtio_ring.h>
+#include <linux/virtio_config.h>
+#include <linux/vduse.h>
 #include "libvduse.h"
+
+#define barrier() ({ asm volatile("" ::: "memory"); (void)0; })
+
+#define smp_mb()         ({ barrier(); __atomic_thread_fence(__ATOMIC_SEQ_CST); })
+#define smp_mb_release() ({ barrier(); __atomic_thread_fence(__ATOMIC_RELEASE); })
+#define smp_mb_acquire() ({ barrier(); __atomic_thread_fence(__ATOMIC_ACQUIRE); })
+
+#define smp_wmb()   smp_mb_release()
+#define smp_rmb()   smp_mb_acquire()
 
 #define VDUSE_VQ_ALIGN 4096
 #define MAX_IOVA_REGIONS 256
@@ -592,6 +600,8 @@ static bool vduse_queue_map_single_desc(VduseVirtq *vq, unsigned int *p_num_sg,
 {
     unsigned num_sg = *p_num_sg;
     VduseDev *dev = vq->dev;
+
+    (void)is_write;
 
     assert(num_sg <= max_num_sg);
 
