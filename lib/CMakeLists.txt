@@ -7,8 +7,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS       "${CMAKE_C_FLAGS} -Wall -Wextra")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 
-include(FindPkgConfig)
-pkg_check_modules(extlibs REQUIRED libnl-3.0 libnl-genl-3.0)
+# include(FindPkgConfig)
+# pkg_check_modules(extlibs REQUIRED libnl-3.0 libnl-genl-3.0)
 
 #
 # libvirtiolo
@@ -33,14 +33,7 @@ target_link_libraries(test PRIVATE virtiolo)
 #
 # test_vduse
 #
-add_executable(test_vduse test_vduse.c)
-target_include_directories(test_vduse PRIVATE ${extlibs_INCLUDE_DIRS})
-target_link_libraries(test_vduse PUBLIC ${extlibs_LIBRARIES})
-
-#
-# libvirtiolo
-#
-add_library(vduse MODULE libvduse.c)
+add_executable(test_vduse test_vduse.c libvduse.c)
 
 #
 # install
