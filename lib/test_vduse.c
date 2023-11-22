@@ -14,6 +14,7 @@
 
 #include <linux/vdpa.h>
 #include <linux/vduse.h>
+#include <linux/virtio_config.h>
 
 #include "test.h"
 
@@ -163,7 +164,7 @@ int main(int argc, char **argv)
 			.name = "test",
 			.vendor_id = VIRTIO_TEST_VENDOR_ID,
 			.device_id = VIRTIO_ID_TEST,
-			.features = 0,
+			.features = 1ULL << VIRTIO_F_IOMMU_PLATFORM,
 			.vq_num = VIRTIO_TEST_QUEUE_MAX,
 			.vq_align = 64, // FIXME
 			.config_size = sizeof(struct virtio_test_config),
@@ -193,6 +194,6 @@ int main(int argc, char **argv)
 error_close_ioctl:
 	close(ioctl_fd);
 error:
-	trace("exit failure");
+	trace_err("exit failure");
 	exit(EXIT_FAILURE);
 }
