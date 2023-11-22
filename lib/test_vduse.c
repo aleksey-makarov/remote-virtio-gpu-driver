@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <linux/virtio_config.h>
 
@@ -10,6 +11,7 @@
 #include "trace.h"
 
 #define DRIVER_NAME "test"
+#define QUEUE_SIZE 16
 static const uint64_t driver_features = 1ULL << VIRTIO_F_IOMMU_PLATFORM
 				      | 1ULL << VIRTIO_F_VERSION_1
 				      ;
@@ -35,6 +37,8 @@ static const VduseOps ops = {
 
 int main(int argc, char **argv)
 {
+	int err;
+
 	(void)argc;
 	(void)argv;
 
@@ -52,11 +56,25 @@ int main(int argc, char **argv)
 		goto error;
 	}
 
+	err = vduse_set_reconnect_log_file(dev, "/tmp/vduse-" DRIVER_NAME ".log");
+	if (err) {
+		trace_err("vduse_set_reconnect_log_file()");
+		goto error_dev_destroy;
+	}
+
+	for (int i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
+		vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
+	}
+
+	sleep(20);
+
 	vduse_dev_destroy(dev);
 
 	trace("exit");
 	exit(EXIT_SUCCESS);
 
+error_dev_destroy:
+	vduse_dev_destroy(dev);
 error:
 	trace_err("exit failure");
 	exit(EXIT_FAILURE);
