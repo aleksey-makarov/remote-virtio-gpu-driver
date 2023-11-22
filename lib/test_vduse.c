@@ -10,6 +10,9 @@
 #include "trace.h"
 
 #define DRIVER_NAME "test"
+static const uint64_t driver_features = 1ULL << VIRTIO_F_IOMMU_PLATFORM
+				      | 1ULL << VIRTIO_F_VERSION_1
+				      ;
 
 static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
 {
@@ -42,12 +45,14 @@ int main(int argc, char **argv)
 	};
 
 	VduseDev *dev = vduse_dev_create(DRIVER_NAME, VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID,
-					 1ULL << VIRTIO_F_IOMMU_PLATFORM, VIRTIO_TEST_QUEUE_MAX,
+					 driver_features, VIRTIO_TEST_QUEUE_MAX,
 					 sizeof(struct virtio_test_config), (char *)&dev_cfg, &ops, NULL);
 	if (!dev) {
 		trace_err("vduse_dev_create()");
 		goto error;
 	}
+
+	vduse_dev_destroy(dev);
 
 	trace("exit");
 	exit(EXIT_SUCCESS);
