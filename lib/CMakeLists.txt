@@ -33,7 +33,7 @@ target_link_libraries(test PRIVATE virtiolo)
 #
 # test_vduse
 #
-add_executable(test_vduse test_vduse.c libvduse.c)
+add_executable(test_vduse test_vduse.c libvduse.c epoll_scheduler.c)
 
 #
 # install
