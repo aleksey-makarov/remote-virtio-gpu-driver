@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/timerfd.h>
+#include <sys/eventfd.h>
 
 #include <linux/virtio_config.h>
 
@@ -14,9 +15,6 @@
 
 #define DRIVER_NAME "test"
 #define QUEUE_SIZE 16
-static const uint64_t driver_features = 1ULL << VIRTIO_F_IOMMU_PLATFORM
-				      | 1ULL << VIRTIO_F_VERSION_1
-				      ;
 
 static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
 {
@@ -36,6 +34,98 @@ static const VduseOps ops = {
     .enable_queue  = test_enable_queue,
     .disable_queue = test_disable_queue,
 };
+
+static int dev_test(void *vctxt)
+{
+	(void)vctxt;
+
+	trace();
+
+	return ES_WAIT;
+}
+
+static int dev_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
+	(void)events;
+
+	trace();
+
+	return 0;
+}
+
+static void dev_done(void *vctxt) {
+	(void)vctxt;
+}
+/*
+static int rx_test(void *vctxt)
+{
+	(void)vctxt;
+
+	trace();
+
+	return ES_WAIT;
+}
+
+static int rx_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
+	(void)events;
+
+	trace();
+
+	return 0;
+}
+
+static void rx_done(void *vctxt) {
+	(void)vctxt;
+}
+
+static int tx_test(void *vctxt)
+{
+	(void)vctxt;
+
+	trace();
+
+	return ES_WAIT;
+}
+
+static int tx_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
+	(void)events;
+
+	trace();
+
+	return 0;
+}
+
+static void tx_done(void *vctxt) {
+	(void)vctxt;
+}
+
+static int notify_test(void *vctxt)
+{
+	(void)vctxt;
+
+	trace();
+
+	return ES_WAIT;
+}
+
+static int notify_go(uint32_t events, void *vctxt)
+{
+	(void)vctxt;
+	(void)events;
+
+	trace();
+
+	return 0;
+}
+
+static void notify_done(void *vctxt) {
+	(void)vctxt;
+}
 
 static int ctrl_test(void *vctxt)
 {
@@ -59,6 +149,7 @@ static int ctrl_go(uint32_t events, void *vctxt)
 static void ctrl_done(void *vctxt) {
 	(void)vctxt;
 }
+*/
 
 static struct es_thread timer_thread;
 
@@ -95,14 +186,50 @@ static void timer_done(void *ctxt) {
 	(void)ctxt;
 }
 
-static struct es_thread ctrl_thread = {
+static struct es_thread dev_thread = {
 	.name   = "ctrl",
 	.ctxt   = NULL,
 	.events = EPOLLIN,
-	.test   = ctrl_test,
-	.go     = ctrl_go,
-	.done   = ctrl_done,
+	.test   = dev_test,
+	.go     = dev_go,
+	.done   = dev_done,
 };
+/*
+static struct es_thread queue_threads[VIRTIO_TEST_QUEUE_MAX] = {
+	[VIRTIO_TEST_QUEUE_RX] = {
+		.name   = "queue_rx",
+		.ctxt   = NULL,
+		.events = EPOLLIN,
+		.test   = rx_test,
+		.go     = rx_go,
+		.done   = rx_done,
+	},
+	[VIRTIO_TEST_QUEUE_TX] = {
+		.name   = "queue_tx",
+		.ctxt   = NULL,
+		.events = EPOLLIN,
+		.test   = tx_test,
+		.go     = tx_go,
+		.done   = tx_done,
+	},
+	[VIRTIO_TEST_QUEUE_NOTIFY] = {
+		.name   = "queue_rx",
+		.ctxt   = NULL,
+		.events = EPOLLIN,
+		.test   = notify_test,
+		.go     = notify_go,
+		.done   = notify_done,
+	},
+	[VIRTIO_TEST_QUEUE_CTRL] = {
+		.name   = "queue_rx",
+		.ctxt   = NULL,
+		.events = EPOLLIN,
+		.test   = ctrl_test,
+		.go     = ctrl_go,
+		.done   = ctrl_done,
+	},
+};
+*/
 static struct es_thread timer_thread = {
 	.name   = "timer",
 	.ctxt   = NULL,
@@ -115,6 +242,7 @@ static struct es_thread timer_thread = {
 int main(int argc, char **argv)
 {
 	int err;
+	uint64_t driver_features = vduse_get_virtio_features();
 
 	(void)argc;
 	(void)argv;
@@ -142,9 +270,30 @@ int main(int argc, char **argv)
 	}
 
 	for (int i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
-		vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
+		err = vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
+		if (err) {
+			trace("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
+			goto error_dev_destroy;
+		}
 	}
-	ctrl_thread.fd = vduse_dev_get_fd(dev);
+	dev_thread.fd = vduse_dev_get_fd(dev);
+
+	trace("@1");
+
+#define F(i) do { \
+		VduseVirtq *vq = vduse_dev_get_queue(dev, i); \
+		int fd = vduse_queue_get_fd(vq); \
+		trace("vq=%p, q=%d, fd=%d", vq, i, fd); \
+		queue_threads[i].fd = fd; \
+		eventfd_write(fd, 1); \
+	} while (0);
+
+	// F(VIRTIO_TEST_QUEUE_RX);
+	// F(VIRTIO_TEST_QUEUE_TX);
+	// F(VIRTIO_TEST_QUEUE_NOTIFY);
+	// F(VIRTIO_TEST_QUEUE_CTRL);
+
+#undef F
 
 	/* timer */
 
@@ -175,7 +324,13 @@ int main(int argc, char **argv)
 	/* schedule */
 
 	struct es *es = es_init(
-		&ctrl_thread,
+		&dev_thread,
+
+		// queue_threads + VIRTIO_TEST_QUEUE_RX,
+		// queue_threads + VIRTIO_TEST_QUEUE_TX,
+		// queue_threads + VIRTIO_TEST_QUEUE_NOTIFY,
+		// queue_threads + VIRTIO_TEST_QUEUE_CTRL,
+
 		&timer_thread,
 		NULL);
 	if (!es) {
