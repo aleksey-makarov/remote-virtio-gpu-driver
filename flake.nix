@@ -27,7 +27,7 @@
   }: let
     system = "x86_64-linux";
 
-    myLinuxPackages = pkgs.linuxPackages_6_5;
+    myLinuxPackages = (import ./linuxPackages.nix) pkgs;
 
     overlay = _: super: {
       linuxKernel =
@@ -39,7 +39,7 @@
           }));
         };
       libvirtiolo = super.callPackage ./lib {
-          linuxPackages = myLinuxPackages;
+        linuxPackages = myLinuxPackages;
       };
     };
 
@@ -60,7 +60,6 @@
     };
 
     nixos = pkgs.nixos (import ./configuration.nix);
-
   in {
     overlays.${system} = {
       default = overlay;

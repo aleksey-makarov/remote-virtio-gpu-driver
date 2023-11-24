@@ -23,7 +23,7 @@ with lib; {
     # KERNEL
 
     boot = rec {
-      kernelPackages = pkgs.linuxPackages_6_5;
+      kernelPackages = (import ./linuxPackages.nix) pkgs;
 
       extraModulePackages = [
         kernelPackages.virtio-lo
