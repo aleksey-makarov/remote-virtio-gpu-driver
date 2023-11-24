@@ -187,7 +187,7 @@ static void timer_done(void *ctxt) {
 }
 
 static struct es_thread dev_thread = {
-	.name   = "ctrl",
+	.name   = "dev",
 	.ctxt   = NULL,
 	.events = EPOLLIN,
 	.test   = dev_test,
@@ -213,7 +213,7 @@ static struct es_thread queue_threads[VIRTIO_TEST_QUEUE_MAX] = {
 		.done   = tx_done,
 	},
 	[VIRTIO_TEST_QUEUE_NOTIFY] = {
-		.name   = "queue_rx",
+		.name   = "queue_notify",
 		.ctxt   = NULL,
 		.events = EPOLLIN,
 		.test   = notify_test,
@@ -221,7 +221,7 @@ static struct es_thread queue_threads[VIRTIO_TEST_QUEUE_MAX] = {
 		.done   = notify_done,
 	},
 	[VIRTIO_TEST_QUEUE_CTRL] = {
-		.name   = "queue_rx",
+		.name   = "queue_ctl",
 		.ctxt   = NULL,
 		.events = EPOLLIN,
 		.test   = ctrl_test,
@@ -277,8 +277,7 @@ int main(int argc, char **argv)
 		}
 	}
 	dev_thread.fd = vduse_dev_get_fd(dev);
-
-	trace("@1");
+	trace("dev fd=%d", dev_thread.fd);
 
 #define F(i) do { \
 		VduseVirtq *vq = vduse_dev_get_queue(dev, i); \
