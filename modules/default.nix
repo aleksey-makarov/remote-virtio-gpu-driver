@@ -36,6 +36,7 @@ in
 
     postInstall = ''
       install -Dm444 virtio_lo.h -t $out/include/linux
+      install -Dm444 virtio_test.h -t $out/include/linux
     '';
 
     meta = with lib; {

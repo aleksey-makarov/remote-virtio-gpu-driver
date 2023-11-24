@@ -24,17 +24,12 @@
 #include <linux/virtio_config.h>
 #include <linux/minmax.h>
 
-#include "../lib/test.h"
+#include "virtio_test.h"
 
 #define MTRACE_FILE "virtio_lo_test.c"
 #include "mtrace.h"
 
-#define assert(x) BUG_ON(x)
-#define trace_err(x, ...) MTRACE("* " x, __VA_ARGS__)
-#include "../lib/stream_gen.h"
-#include "../lib/stream_gen_impl.c"
-#undef assert
-#undef trace_err
+#include "stream_gen.h"
 
 enum {
 	STATE_DOWN,

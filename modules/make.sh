@@ -24,5 +24,5 @@ fi
 if [ -f virtio-lo.ko ] ; then
 	mkdir -p xchg
 	cp virtio-lo.ko ./xchg
-	cp virtio-lo-test.ko ./xchg
+	cp virtio-test.ko ./xchg
 fi

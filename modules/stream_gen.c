@@ -1,3 +1,8 @@
+#include <asm-generic/bug.h>
+
+#include "mtrace.h"
+#include "stream_gen.h"
+
 /* https://en.wikipedia.org/wiki/Xorshift */
 static uint32_t xorshift32(uint32_t *state)
 {
@@ -11,7 +16,7 @@ static uint32_t xorshift32(uint32_t *state)
 
 void stream_gen_init(struct stream_gen *gen, uint32_t seed)
 {
-	assert(seed == 0);
+	BUG_ON(seed == 0);
 
 	gen->state = seed;
 	gen->position = 0;
@@ -44,7 +49,7 @@ int stream_gen_test(struct stream_gen *st, void *vp, unsigned int len)
 			st->last = xorshift32(&st->state);
 
 		if (*p != st->last_bytes[st->position % 4]) {
-			trace_err("@%lu: 0x%02x should be 0x%02x", st->position, (unsigned int)*p, (unsigned int)st->last_bytes[st->position % 4]);
+			MTRACE("* @%lu: 0x%02x should be 0x%02x", st->position, (unsigned int)*p, (unsigned int)st->last_bytes[st->position % 4]);
 			return -1;
 		}
 
