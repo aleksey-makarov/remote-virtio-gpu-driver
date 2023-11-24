@@ -27,8 +27,8 @@ set_target_properties(virtiolo
 #
 # test
 #
-add_executable(test test.c epoll_scheduler.c)
-target_link_libraries(test PRIVATE virtiolo)
+add_executable(test_lo test_lo.c epoll_scheduler.c)
+target_link_libraries(test_lo PRIVATE virtiolo)
 
 #
 # test_vduse
@@ -42,6 +42,6 @@ include(GNUInstallDirs)
 
 configure_file(libvirtiolo.pc.in libvirtiolo.pc @ONLY)
 
-install(TARGETS virtiolo test test_vduse)
+install(TARGETS virtiolo test_lo test_vduse)
 install(FILES libvirtiolo.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libvirtiolo.pc DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
