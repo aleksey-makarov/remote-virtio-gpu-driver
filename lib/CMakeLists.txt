@@ -27,7 +27,7 @@ set_target_properties(virtiolo
 #
 # test
 #
-add_executable(test test.c epoll_scheduler.c stream_gen.c)
+add_executable(test test.c epoll_scheduler.c)
 target_link_libraries(test PRIVATE virtiolo)
 
 #

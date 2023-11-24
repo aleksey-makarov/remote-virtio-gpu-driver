@@ -4,7 +4,8 @@
 #include <sys/timerfd.h>
 #include <assert.h>
 
-#include "test.h"
+#include <linux/virtio_test.h>
+
 #include "libvirtiolo.h"
 #include "epoll_scheduler.h"
 

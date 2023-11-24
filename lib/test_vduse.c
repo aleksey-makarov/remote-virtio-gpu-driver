@@ -8,7 +8,7 @@
 #include "libvduse.h"
 #include "epoll_scheduler.h"
 
-#include "test.h"
+#include <linux/virtio_test.h>
 
 #define TRACE_FILE "test_vduse.c"
 #include "trace.h"
