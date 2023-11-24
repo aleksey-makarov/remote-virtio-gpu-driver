@@ -34,10 +34,11 @@
         super.linuxKernel
         // {
           packagesFor = kernel_: ((super.linuxKernel.packagesFor kernel_).extend (lpself: lpsuper: {
-            virtio-lo = lpsuper.callPackage ./modules/default.nix {};
+            virtio-lo = lpsuper.callPackage ./modules {};
+            vduse = lpsuper.callPackage ./vduse {};
           }));
         };
-      libvirtiolo = super.callPackage ./lib/default.nix {
+      libvirtiolo = super.callPackage ./lib {
           linuxPackages = myLinuxPackages;
       };
     };
@@ -73,6 +74,8 @@
 
       virtio-lo = myLinuxPackages.virtio-lo;
       virtio-lo-dev = myLinuxPackages.virtio-lo.dev;
+
+      vduse = myLinuxPackages.vduse;
     };
 
     devShells.${system} = rec {

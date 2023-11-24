@@ -25,7 +25,12 @@ with lib; {
     boot = rec {
       kernelPackages = pkgs.linuxPackages_6_5;
 
-      extraModulePackages = [kernelPackages.virtio-lo];
+      extraModulePackages = [
+        kernelPackages.virtio-lo
+        (kernelPackages.vduse.overrideAttrs (_: {
+          patches = [./vduse/0001-vduse-Enable-test-driver.patch];
+        }))
+      ];
       kernelModules = ["virtio-lo"];
 
       # kernelPatches = (import ./linux-patches.nix)."5_4";

@@ -1,0 +1,32 @@
+From e5db7ea3b5e850fefa97cce602b227e12722ef74 Mon Sep 17 00:00:00 2001
+From: Aleksei Makarov <aleksei.makarov@opensynergy.com>
+Date: Fri, 24 Nov 2023 17:02:28 +0100
+Subject: [PATCH] vduse: Enable test driver
+
+---
+ drivers/vdpa/vdpa_user/vduse_dev.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/vdpa/vdpa_user/vduse_dev.c b/drivers/vdpa/vdpa_user/vduse_dev.c
+index df7869537ef1..f40189fd13ec 100644
+--- a/drivers/vdpa/vdpa_user/vduse_dev.c
++++ b/drivers/vdpa/vdpa_user/vduse_dev.c
+@@ -142,6 +142,7 @@ static struct workqueue_struct *vduse_irq_bound_wq;
+ 
+ static u32 allowed_device_id[] = {
+ 	VIRTIO_ID_BLOCK,
++	111,
+ };
+ 
+ static inline struct vduse_dev *vdpa_to_vduse(struct vdpa_device *vdpa)
+@@ -2026,6 +2027,7 @@ static const struct vdpa_mgmtdev_ops vdpa_dev_mgmtdev_ops = {
+ 
+ static struct virtio_device_id id_table[] = {
+ 	{ VIRTIO_ID_BLOCK, VIRTIO_DEV_ANY_ID },
++	{ 111, VIRTIO_DEV_ANY_ID }, // test
+ 	{ 0 },
+ };
+ 
+-- 
+2.25.1
+
