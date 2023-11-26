@@ -1,2 +1,2 @@
 # pkgs -> linuxPackages
-pkgs: pkgs.linuxPackages_6_5
+pkgs: pkgs.linuxPackages_6_6
