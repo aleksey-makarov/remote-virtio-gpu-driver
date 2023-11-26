@@ -330,7 +330,7 @@ int main(int argc, char **argv)
 		// queue_threads + VIRTIO_TEST_QUEUE_NOTIFY,
 		// queue_threads + VIRTIO_TEST_QUEUE_CTRL,
 
-		&timer_thread,
+		// &timer_thread,
 		NULL);
 	if (!es) {
 		trace_err("es_init()");
@@ -342,6 +342,12 @@ int main(int argc, char **argv)
 		trace_err("es_schedule()");
 		goto error_close_timer_fd;
 	}
+
+	// while (true) {
+	// 	unsigned char v;
+	// 	err = read(dev_thread.fd, &v, 1);
+	// 	trace("read(): %d: %u", err, (unsigned int)v);
+	// }
 
 	trace("done");
 
