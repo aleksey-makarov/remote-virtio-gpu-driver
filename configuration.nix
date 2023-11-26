@@ -31,31 +31,11 @@ with lib; {
           patches = [./vduse/0001-vduse-Enable-test-driver.patch];
         }))
       ];
-      kernelModules = ["virtio-lo"];
-
-      # kernelPatches = (import ./linux-patches.nix)."5_4";
-      # kernelPatches = [
-      #   {
-      #     name = "virgl sync drm support";
-      #     patch = ./0001-drm-virtio-Add-VSYNC-support-linux-5-4.patch;
-      #   }
-      # ];
+      kernelModules = ["vduse" "virtio-test"];
 
       # kernelParams = [ "video=1920x1080" ];
       # kernelParams = [ "drm.debug=0x1ff" ];
     };
-
-    # environment.etc = {
-    #   # Creates /etc/nanorc
-    #   debug_txt_file = {
-    #     text = ''
-    #         # virtio-lo:
-    #         ${config.boot.kernelPackages.virtio-lo}
-    #     '';
-    #     # The UNIX file mode bits
-    #     mode = "0444";
-    #   };
-    # };
 
     # from profiles/minimal.nix
     documentation.enable = false;
@@ -69,8 +49,6 @@ with lib; {
     programs.dconf.enable = true;
 
     services.getty.autologinUser = "root";
-
-    # services.udev.packages = [ pkgs.remote-virtio-gpu ];
 
     virtualisation = {
       # diskSize = 8000; # MB
@@ -86,11 +64,6 @@ with lib; {
         }
       ];
       qemu = {
-        # package = pkgs.pkgs_orig.qemu;
-
-        # consoles = [];
-        # [ "console=tty1" ];
-
         options = [
           "-device virtio-vga-gl"
           "-display sdl,gl=on"
@@ -107,41 +80,17 @@ with lib; {
       };
     };
 
-    # fileSystems."/" = {
-    #     device = "/dev/disk/by-label/nixos";
-    #     fsType = "ext4";
-    #     autoResize = true;
-    # };
-
     security.polkit.enable = true;
 
     networking.firewall.enable = false;
-
-    # boot = {
-    #   growPartition = true;
-    #   # kernelParams = [ "console=ttyS0 boot.shell_on_fail" ];
-    #   # loader.timeout = 5;
-    # };
-
-    # services.qemuGuest.enable = true; # ???
 
     services.openssh.enable = true;
     services.openssh.settings.PermitRootLogin = "yes";
     # services.openssh.passwordAuthentication = true;
 
-    # services.xserver = {
-    #    enable = true;
-    #    displayManager.gdm.enable = true;
-    #    desktopManager.gnome.enable = true;
-    # };
-
-    # services.qemuGuest.enable = true;
-    # services.spice-vdagentd.enable = true;
-    # services.gpm.enable = true;
-
     fonts.packages = with pkgs; [
       ## good:
-      # noto-fonts
+      noto-fonts
       # noto-fonts-cjk
       # noto-fonts-emoji
 
@@ -150,7 +99,7 @@ with lib; {
       # fira-code-symbols
 
       ## too dense and does not work with midnight commander
-      mplus-outline-fonts.githubRelease
+      # mplus-outline-fonts.githubRelease
     ];
 
     environment.systemPackages = with pkgs; [
