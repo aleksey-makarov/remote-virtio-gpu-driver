@@ -144,96 +144,65 @@ static int readfd_uint64(int fd)
 	return ev;
 }
 
-struct ctxt {
-	struct vlo *vl;
-
-	/*
-	 * Config
-	 */
-	struct es_thread config_thread;
-
-	/*
-	 * RX
-	 */
-	struct es_thread rx_thread;
-
-	/*
-	 * TX
-	 */
-	struct es_thread tx_thread;
-
-	/*
-	 * Notify
-	 */
-	struct es_thread notify_thread;
-
-	/*
-	 * Ctrl
-	 */
-	struct es_thread ctrl_thread;
-
-	/*
-	 * Timer
-	 */
-	struct es_thread timer_thread;
-
-};
-
-static struct ctxt ctxt;
+static struct vlo *vl;
+static struct es_thread config_thread;
+static struct es_thread rx_thread;
+static struct es_thread tx_thread;
+static struct es_thread notify_thread;
+static struct es_thread ctrl_thread;
+static struct es_thread timer_thread;
 
 /*
  * Config
  */
-static enum es_test_result config_test(void *vctxt)
+static enum es_test_result config_test(struct es_thread *self)
 {
-	(void)vctxt;
+	(void)self;
 	return ES_WAIT;
 }
 
-static int config_go(uint32_t events, void *vctxt)
+static int config_go(struct es_thread *self, uint32_t events)
 {
-	(void)vctxt;
+	(void)self;
 	(void)events;
 	trace();
 	return 0;
 }
 
-static void config_done(void *vctxt) { (void)vctxt; }
-
 /*
  * RX
  */
-static enum es_test_result rx_test(void *vctxt)
+static enum es_test_result rx_test(struct es_thread *self)
 {
-	(void)vctxt;
+	(void)self;
 
 	int ret;
 
 	if (serv_data_length() == 0) {
-		ctxt.rx_thread.events = 0;
+		rx_thread.events = 0;
 		return ES_WAIT;
 	}
 
-	ret = readfd_uint64(ctxt.rx_thread.fd);
+	ret = readfd_uint64(rx_thread.fd);
 	if (ret < 0) {
 		trace_err("readfd_uint64()");
 		return -1;
 	}
 
-	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
-		ctxt.rx_thread.events = 0;
+	if (vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_RX)) {
+		rx_thread.events = 0;
 		// trace("buffer is available");
 		return ES_READY;
 	} else {
-		ctxt.rx_thread.events = EPOLLIN;
+		rx_thread.events = EPOLLIN;
 		// trace("waiting for buffer");
 		return ES_WAIT;
 	}
 }
 
-static int rx_go(uint32_t events, void *vctxt)
+static int rx_go(struct es_thread *self, uint32_t events)
 {
-	(void)vctxt;
+	(void)self;
 	(void)events;
 
 	int ret;
@@ -245,8 +214,8 @@ static int rx_go(uint32_t events, void *vctxt)
 	static unsigned int bad0 = 0;
 	static unsigned int bad1 = 0;
 
-	if (!vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX)) {
-		if (!ctxt.rx_thread.events)
+	if (!vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_RX)) {
+		if (!rx_thread.events)
 			bad0++;
 		else
 			bad1++;
@@ -258,7 +227,7 @@ static int rx_go(uint32_t events, void *vctxt)
 		bad0 = bad1 = 0;
 	}
 
-	struct vlo_buf *req = vlo_buf_get(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
+	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_RX);
 	if (!req) {
 		trace_err("vlo_buf_get()");
 		return -1;
@@ -278,7 +247,7 @@ static int rx_go(uint32_t events, void *vctxt)
 
 done:
 	vlo_buf_put(req, ret);
-	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX);
+	vlo_kick(vl, VIRTIO_TEST_QUEUE_RX);
 
 	// ret = ret < 0 ? -1 : 0;
 	// trace_err("ret=%d", ret);
@@ -287,36 +256,34 @@ done:
 	return ret < 0 ? -1 : 0;
 }
 
-static void rx_done(void *vctxt) { (void)vctxt; }
-
 /*
  * TX
  */
-static enum es_test_result tx_test(void *vctxt)
+static enum es_test_result tx_test(struct es_thread *self)
 {
-	(void)vctxt;
+	(void)self;
 	int ret;
 
-	ret = readfd_uint64(ctxt.tx_thread.fd);
+	ret = readfd_uint64(tx_thread.fd);
 	if (ret < 0) {
 		trace_err("readfd_uint64()");
 		return -1;
 	}
 
-	if (vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_TX)) {
+	if (vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_TX)) {
 		// trace("buffer is available");
-		ctxt.tx_thread.events = 0;
+		tx_thread.events = 0;
 		return ES_READY;
 	} else {
-		ctxt.tx_thread.events = EPOLLIN;
+		tx_thread.events = EPOLLIN;
 		// trace("waiting for buffer");
 		return ES_WAIT;
 	}
 }
 
-static int tx_go(uint32_t events, void *vctxt)
+static int tx_go(struct es_thread *self, uint32_t events)
 {
-	(void)vctxt;
+	(void)self;
 	(void)events;
 
 	int ret;
@@ -326,8 +293,8 @@ static int tx_go(uint32_t events, void *vctxt)
 	static unsigned int bad0 = 0;
 	static unsigned int bad1 = 0;
 
-	if (!vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_TX)) {
-		if (!ctxt.tx_thread.events)
+	if (!vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_TX)) {
+		if (!tx_thread.events)
 			bad0++;
 		else
 			bad1++;
@@ -340,7 +307,7 @@ static int tx_go(uint32_t events, void *vctxt)
 		bad0 = bad1 = 0;
 	}
 
-	struct vlo_buf *req = vlo_buf_get(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
+	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_TX);
 	if (!req) {
 		trace_err("vlo_buf_get()");
 		return -1;
@@ -360,19 +327,17 @@ static int tx_go(uint32_t events, void *vctxt)
 
 done:
 	vlo_buf_put(req, 0);
-	vlo_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX);
+	vlo_kick(vl, VIRTIO_TEST_QUEUE_TX);
 
 	return ret < 0 ? -1 : 0;
 }
 
-static void tx_done(void *vctxt) { (void)vctxt; }
-
 /*
  * Notify
  */
-static enum es_test_result notify_test(void *vctxt)
+static enum es_test_result notify_test(struct es_thread *self)
 {
-	(void)vctxt;
+	(void)self;
 	/*
 	 * FIXME: don't use this thread for now.
 	 * In a full fledged app, there should be a queue
@@ -383,15 +348,13 @@ static enum es_test_result notify_test(void *vctxt)
 	return ES_EXIT;
 }
 
-static int notify_go(uint32_t events, void *vctxt)
+static int notify_go(struct es_thread *self, uint32_t events)
 {
-	(void)vctxt;
+	(void)self;
 	(void)events;
 	trace();
 	return 0;
 }
-
-static void notify_done(void *vctxt) { (void)vctxt; }
 
 static int send_notification(struct vlo *vl, unsigned int id)
 {
@@ -444,47 +407,45 @@ done:
 /*
  * Ctrl
  */
-static enum es_test_result ctrl_test(void *vctxt)
+static enum es_test_result ctrl_test(struct es_thread *self)
 {
-	(void)vctxt;
+	(void)self;
 	return ES_WAIT;
 }
 
-static int ctrl_go(uint32_t events, void *vctxt)
+static int ctrl_go(struct es_thread *self, uint32_t events)
 {
-	(void)vctxt;
+	(void)self;
 	(void)events;
 	trace();
 	return 0;
 }
 
-static void ctrl_done(void *vctxt) { (void)vctxt; }
-
 /*
  * Timer
  */
-static enum es_test_result timer_test(void *vctxt)
+static enum es_test_result timer_test(struct es_thread *self)
 {
-	(void)vctxt;
+	(void)self;
 	return ES_WAIT;
 }
 
-static int timer_go(uint32_t events, void *vctxt)
+static int timer_go(struct es_thread *self, uint32_t events)
 {
-	(void)vctxt;
+	(void)self;
 	(void)events;
 
 	static unsigned int n = 0;
 	int ret;
 
-	ret = readfd_uint64(ctxt.timer_thread.fd);
+	ret = readfd_uint64(timer_thread.fd);
 	if (ret < 0) {
 		trace_err("readfd_uint64()");
 		return -1;
 	}
 
 	if (n % 5 == 0) {
-		ret = send_notification(ctxt.vl, n);
+		ret = send_notification(vl, n);
 		if (ret < 0) {
 			trace_err("send_notification(STOP)");
 			return -1;
@@ -496,57 +457,47 @@ static int timer_go(uint32_t events, void *vctxt)
 	return 0;
 }
 
-static void timer_done(void *ctxt) { (void)ctxt; }
-
-static struct ctxt ctxt = {
-	.config_thread = {
-		.name   = "config",
-		.ctxt   = &ctxt,
-		.events = EPOLLIN,
-		.test   = config_test,
-		.go     = config_go,
-		.done   = config_done,
-	},
-	.rx_thread ={
-		.name   = "rx",
-		.ctxt   = &ctxt,
-		.events = 0,
-		.test   = rx_test,
-		.go     = rx_go,
-		.done   = rx_done,
-	},
-	.tx_thread = {
-		.name   = "tx",
-		.ctxt   = &ctxt,
-		.events = EPOLLIN,
-		.test   = tx_test,
-		.go     = tx_go,
-		.done   = tx_done,
-	},
-	.notify_thread = {
-		.name   = "notify",
-		.ctxt   = &ctxt,
-		.events = 0,
-		.test   = notify_test,
-		.go     = notify_go,
-		.done   = notify_done,
-	},
-	.ctrl_thread = {
-		.name   = "ctrl",
-		.ctxt   = &ctxt,
-		.events = EPOLLIN,
-		.test   = ctrl_test,
-		.go     = ctrl_go,
-		.done   = ctrl_done,
-	},
-	.timer_thread = {
-		.name   = "timer",
-		.ctxt   = &ctxt,
-		.events = EPOLLIN,
-		.test   = timer_test,
-		.go     = timer_go,
-		.done   = timer_done,
-	},
+static struct es_thread config_thread = {
+	.name   = "config",
+	.events = EPOLLIN,
+	.test   = config_test,
+	.go     = config_go,
+	.done   = NULL,
+};
+static struct es_thread rx_thread ={
+	.name   = "rx",
+	.events = 0,
+	.test   = rx_test,
+	.go     = rx_go,
+	.done   = NULL,
+};
+static struct es_thread tx_thread = {
+	.name   = "tx",
+	.events = EPOLLIN,
+	.test   = tx_test,
+	.go     = tx_go,
+	.done   = NULL,
+};
+static struct es_thread notify_thread = {
+	.name   = "notify",
+	.events = 0,
+	.test   = notify_test,
+	.go     = notify_go,
+	.done   = NULL,
+};
+static struct es_thread ctrl_thread = {
+	.name   = "ctrl",
+	.events = EPOLLIN,
+	.test   = ctrl_test,
+	.go     = ctrl_go,
+	.done   = NULL,
+};
+static struct es_thread timer_thread = {
+	.name   = "timer",
+	.events = EPOLLIN,
+	.test   = timer_test,
+	.go     = timer_go,
+	.done   = NULL,
 };
 
 int main(int argc, char **argv)
@@ -564,8 +515,8 @@ int main(int argc, char **argv)
 
 	serv_reset();
 
-	ctxt.vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
-	if (!ctxt.vl) {
+	vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
+	if (!vl) {
 		trace_err("vlo_init()");
 		goto error;
 	}
@@ -574,18 +525,18 @@ int main(int argc, char **argv)
 	sleep(1);
 	trace("...done");
 
-	ctxt.config_thread.fd = vlo_epoll_get_config(ctxt.vl);
-	ctxt.rx_thread.fd     = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_RX    );
-	ctxt.tx_thread.fd     = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_TX    );
-	ctxt.notify_thread.fd = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_NOTIFY);
-	ctxt.ctrl_thread.fd   = vlo_epoll_get_kick(ctxt.vl, VIRTIO_TEST_QUEUE_CTRL  );
+	config_thread.fd = vlo_epoll_get_config(vl);
+	rx_thread.fd     = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_RX    );
+	tx_thread.fd     = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_TX    );
+	notify_thread.fd = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
+	ctrl_thread.fd   = vlo_epoll_get_kick(vl, VIRTIO_TEST_QUEUE_CTRL  );
 
 	err = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 	if (err < 0) {
 		trace_err_p("timerfd_create()");
 		goto error_virtio_done;
 	}
-	ctxt.timer_thread.fd = err;
+	timer_thread.fd = err;
 
 	struct itimerspec t = {
 		.it_interval = {
@@ -598,19 +549,19 @@ int main(int argc, char **argv)
 		},
 	};
 
-	err = timerfd_settime(ctxt.timer_thread.fd, 0, &t, NULL);
+	err = timerfd_settime(timer_thread.fd, 0, &t, NULL);
 	if (err < 0) {
 		trace_err_p("timerfd_settime()");
 		goto error_close_timer_fd;
 	}
 
 	struct es *es = es_init(
-		&ctxt.config_thread,
-		&ctxt.rx_thread,
-		&ctxt.tx_thread,
-		&ctxt.notify_thread,
-		&ctxt.ctrl_thread,
-		&ctxt.timer_thread,
+		&config_thread,
+		&rx_thread,
+		&tx_thread,
+		&notify_thread,
+		&ctrl_thread,
+		&timer_thread,
 		NULL);
 	if (!es) {
 		trace_err("es_init()");
@@ -623,15 +574,15 @@ int main(int argc, char **argv)
 		goto error_close_timer_fd;
 	}
 
-	close(ctxt.timer_thread.fd);
-	vlo_done(ctxt.vl);
+	close(timer_thread.fd);
+	vlo_done(vl);
 
 	exit(EXIT_SUCCESS);
 
 error_close_timer_fd:
-	close(ctxt.timer_thread.fd);
+	close(timer_thread.fd);
 error_virtio_done:
-	vlo_done(ctxt.vl);
+	vlo_done(vl);
 error:
 	exit(EXIT_FAILURE);
 }
