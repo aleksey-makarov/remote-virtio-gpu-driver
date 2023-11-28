@@ -26,7 +26,7 @@
 
 #include "virtio_test.h"
 
-#define MTRACE_FILE "virtio_lo_test.c"
+#define MTRACE_FILE "virtio_test.c"
 #include "mtrace.h"
 
 #include "stream_gen.h"
