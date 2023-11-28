@@ -42,6 +42,9 @@
 #include <linux/vduse.h>
 #include "libvduse.h"
 
+#define TRACE_FILE "libvduse.c"
+#include "trace.h"
+
 #define barrier() ({ asm volatile("" ::: "memory"); (void)0; })
 
 #define smp_mb()         ({ barrier(); __atomic_thread_fence(__ATOMIC_SEQ_CST); })
@@ -1025,11 +1028,13 @@ int vduse_dev_handler(VduseDev *dev)
 
     switch (req.type) {
     case VDUSE_GET_VQ_STATE:
+        trace("VDUSE_GET_VQ_STATE");
         vq = &dev->vqs[req.vq_state.index];
         resp.vq_state.split.avail_index = vq->last_avail_idx;
         resp.result = VDUSE_REQ_RESULT_OK;
         break;
     case VDUSE_SET_STATUS:
+        trace("VDUSE_SET_STATUS");
         if (req.s.status & VIRTIO_CONFIG_S_DRIVER_OK) {
             vduse_dev_start_dataplane(dev);
         } else if (req.s.status == 0) {
@@ -1038,6 +1043,7 @@ int vduse_dev_handler(VduseDev *dev)
         resp.result = VDUSE_REQ_RESULT_OK;
         break;
     case VDUSE_UPDATE_IOTLB:
+        trace("VDUSE_UPDATE_IOTLB");
         /* The iova will be updated by iova_to_va() later, so just remove it */
         vduse_iova_remove_region(dev, req.iova.start, req.iova.last);
         for (i = 0; i < dev->num_queues; i++) {
@@ -1054,6 +1060,7 @@ int vduse_dev_handler(VduseDev *dev)
         resp.result = VDUSE_REQ_RESULT_OK;
         break;
     default:
+        trace("VDUSE_ ???");
         resp.result = VDUSE_REQ_RESULT_FAILED;
         break;
     }
@@ -1291,6 +1298,9 @@ VduseDev *vduse_dev_create(const char *name, uint32_t device_id,
     struct vduse_dev_config *dev_config;
     size_t size = offsetof(struct vduse_dev_config, config);
 
+    trace("name=%s, device_id=%u, vendor_id=%u, features=0x%lu, num_queues=%d, config_size=%u",
+          name, device_id, vendor_id, features, (int)num_queues, config_size);
+
     if (!name || vduse_name_is_invalid(name) ||
         !has_feature(features,  VIRTIO_F_VERSION_1) || !config ||
         !config_size || !ops || !ops->enable_queue || !ops->disable_queue) {
@@ -1350,6 +1360,7 @@ VduseDev *vduse_dev_create(const char *name, uint32_t device_id,
         goto err;
     }
 
+    trace("ok");
     return dev;
 err:
     ioctl(ctrl_fd, VDUSE_DESTROY_DEV, name);
