@@ -30,7 +30,7 @@ static void es_done(struct es *es)
 			continue;
 		epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
 		if (th->done)
-			th->done(th->ctxt);
+			th->done(th);
 	}
 
 	close(es->epoll_fd);
@@ -214,7 +214,7 @@ int es_schedule(struct es *es)
 
 		for (n = 0; n < data_len; n++) {
 			struct es_thread *th = es->data[n];
-			ret = th->test(th->ctxt);
+			ret = th->test(th);
 			th->ready = false;
 			if (ret == ES_DONE || ret < 0) {
 				if (ret < 0)
@@ -230,7 +230,7 @@ int es_schedule(struct es *es)
 				}
 				trace("\"%s\" is quitting", th->name);
 				if (th->done)
-					th->done(th->ctxt);
+					th->done(th);
 				es->data[n] = NULL;
 				deleted++;
 			} else if (ret == ES_READY) {
@@ -264,7 +264,7 @@ int es_schedule(struct es *es)
 			struct epoll_event *ev = es->events + i;
 			struct es_thread *th = es->data[ev->data.u32];
 			if (th->go) {
-				ret = th->go(ev->events, th->ctxt);
+				ret = th->go(th, ev->events);
 				if (ret < 0) {
 					trace_err("\"%s\" go reported error @2", th->name);
 					goto done;
@@ -279,7 +279,7 @@ int es_schedule(struct es *es)
 				if (!th->ready)
 					continue;
 				if (th->go) {
-					ret = th->go(0, th->ctxt);
+					ret = th->go(th, 0);
 					if (ret < 0) {
 						trace_err("\"%s\" go reported error @3", th->name);
 						goto done;

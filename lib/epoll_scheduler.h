@@ -17,7 +17,6 @@ enum es_test_result {
 struct es_thread {
 
 	const char *name;
-	void *ctxt;
 	int fd;
 	uint32_t events;
 
@@ -33,20 +32,20 @@ struct es_thread {
 	 *     in the current iteration
 	 * - any negative vaule to signal error
 	 */
-	enum es_test_result (*test)(void *ctxt);
+	enum es_test_result (*test)(struct es_thread *self);
 
 	/*
 	 * Returns
 	 *     - any non-negative value to proceed
 	 *     - any negative vaule to signal error
 	 */
-	int (*go)(uint32_t events, void *ctxt);
+	int (*go)(struct es_thread *self, uint32_t events);
 
 	/*
 	 * Called if any of the threads signalls error
 	 * or if this thread exits.
 	 */
-	void (*done)(void *ctxt);
+	void (*done)(struct es_thread *self);
 
 	/*
 	 * Private to epoll_scheduler, don't touch
