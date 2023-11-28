@@ -16,24 +16,26 @@
 #define DRIVER_NAME "test"
 #define QUEUE_SIZE 16
 
-static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
-{
-	(void)dev;
-	(void)vq;
-	trace();
-}
+static struct es *es;
 
-static void test_disable_queue(VduseDev *dev, VduseVirtq *vq)
+static int readfd_uint64(int fd)
 {
-	(void)dev;
-	(void)vq;
-	trace();
-}
+	uint64_t ev;
+	int ret;
 
-static const VduseOps ops = {
-    .enable_queue  = test_enable_queue,
-    .disable_queue = test_disable_queue,
-};
+	ret = read(fd, &ev, sizeof(ev));
+	if (ret >= 0 && ret != sizeof(ev)) {
+		trace_err("read(): wrong size");
+		return -1;
+	} else if (ret < 0) {
+		if (errno == EAGAIN)
+			return 0;
+		trace_err_p("read() (errno=%d)", errno);
+		return -1;
+	}
+
+	return ev;
+}
 
 static enum es_test_result dev_test(void *vctxt)
 {
@@ -63,7 +65,7 @@ static int dev_go(uint32_t events, void *vctxt)
 static void dev_done(void *vctxt) {
 	(void)vctxt;
 }
-/*
+
 static enum es_test_result rx_test(void *vctxt)
 {
 	(void)vctxt;
@@ -155,40 +157,37 @@ static int ctrl_go(uint32_t events, void *vctxt)
 static void ctrl_done(void *vctxt) {
 	(void)vctxt;
 }
-*/
 
 static struct es_thread timer_thread;
 
 static enum es_test_result timer_test(void *vctxt)
 {
 	(void)vctxt;
-
-	trace();
-
-	struct itimerspec t;
-	int err = timerfd_gettime(timer_thread.fd, &t);
-	if (err < 0) {
-		trace_err_p("timerfd_gettime()");
-		return err;
-	}
-
-	if (t.it_value.tv_nsec == 0 && t.it_value.tv_sec == 0)
-		return ES_DONE;
-
 	return ES_WAIT;
 }
-
+static struct es_thread dev_thread;
 static int timer_go(uint32_t events, void *vctxt)
 {
 	(void)vctxt;
 	(void)events;
 
-	trace();
+	static unsigned int n = 0;
+	int ret;
+
+	ret = readfd_uint64(timer_thread.fd);
+	if (ret < 0) {
+		trace_err("readfd_uint64()");
+		return -1;
+	}
+
+	n++;
+	trace("%d", n);
 
 	return 0;
 }
 
-static void timer_done(void *ctxt) {
+static void timer_done(void *ctxt)
+{
 	(void)ctxt;
 }
 
@@ -200,42 +199,56 @@ static struct es_thread dev_thread = {
 	.go     = dev_go,
 	.done   = dev_done,
 };
-/*
-static struct es_thread queue_threads[VIRTIO_TEST_QUEUE_MAX] = {
+
+struct queue {
+	struct es_thread thread;
+	bool enabled;
+	int fd;
+	VduseVirtq *vq;
+};
+
+static struct queue queues[VIRTIO_TEST_QUEUE_MAX] = {
 	[VIRTIO_TEST_QUEUE_RX] = {
+		.thread = {
 		.name   = "queue_rx",
 		.ctxt   = NULL,
 		.events = EPOLLIN,
 		.test   = rx_test,
 		.go     = rx_go,
 		.done   = rx_done,
+		},
 	},
 	[VIRTIO_TEST_QUEUE_TX] = {
+		.thread = {
 		.name   = "queue_tx",
 		.ctxt   = NULL,
 		.events = EPOLLIN,
 		.test   = tx_test,
 		.go     = tx_go,
 		.done   = tx_done,
+		},
 	},
 	[VIRTIO_TEST_QUEUE_NOTIFY] = {
+		.thread = {
 		.name   = "queue_notify",
 		.ctxt   = NULL,
 		.events = EPOLLIN,
 		.test   = notify_test,
 		.go     = notify_go,
 		.done   = notify_done,
+		},
 	},
 	[VIRTIO_TEST_QUEUE_CTRL] = {
+		.thread = {
 		.name   = "queue_ctl",
 		.ctxt   = NULL,
 		.events = EPOLLIN,
 		.test   = ctrl_test,
 		.go     = ctrl_go,
 		.done   = ctrl_done,
+		},
 	},
 };
-*/
 static struct es_thread timer_thread = {
 	.name   = "timer",
 	.ctxt   = NULL,
@@ -243,6 +256,54 @@ static struct es_thread timer_thread = {
 	.test   = timer_test,
 	.go     = timer_go,
 	.done   = timer_done,
+};
+
+static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
+{
+	(void)dev;
+	(void)vq;
+
+	int index = vduse_queue_get_index(vq);
+
+	if (index < 0 || VIRTIO_TEST_QUEUE_MAX <= index) {
+		trace_err("index == %d", index);
+		return;
+	}
+
+	struct queue *q = queues + index;
+
+	trace("%s", q->thread.name);
+
+	q->fd = vduse_queue_get_fd(vq);
+	q->vq = vq;
+	q->enabled = true;
+
+	int err = es_add(es, &q->thread);
+	if (err)
+		trace_err("es_add(\"%s\")", q->thread.name);
+}
+
+static void test_disable_queue(VduseDev *dev, VduseVirtq *vq)
+{
+	(void)dev;
+
+	int index = vduse_queue_get_index(vq);
+
+	if (index < 0 || VIRTIO_TEST_QUEUE_MAX <= index) {
+		trace_err("index == %d", index);
+		return;
+	}
+
+	struct queue *q = queues + index;
+
+	trace("%s", q->thread.name);
+
+	q->enabled = false;
+}
+
+static const VduseOps ops = {
+	.enable_queue  = test_enable_queue,
+	.disable_queue = test_disable_queue,
 };
 
 int main(int argc, char **argv)
@@ -269,6 +330,8 @@ int main(int argc, char **argv)
 		goto error;
 	}
 	dev_thread.ctxt = dev;
+	dev_thread.fd = vduse_dev_get_fd(dev);
+	trace("dev fd=%d", dev_thread.fd);
 
 	err = vduse_set_reconnect_log_file(dev, "/tmp/vduse-" DRIVER_NAME ".log");
 	if (err) {
@@ -279,12 +342,18 @@ int main(int argc, char **argv)
 	for (int i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
 		err = vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
 		if (err) {
-			trace("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
+			trace_err("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
 			goto error_dev_destroy;
 		}
 	}
-	dev_thread.fd = vduse_dev_get_fd(dev);
-	trace("dev fd=%d", dev_thread.fd);
+
+	for (int i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
+		VduseVirtq *vq = vduse_dev_get_queue(dev, i); \
+		if (!vq) {
+			trace_err("vduse_dev_get_queue(%d)", i);
+			goto error_dev_destroy;
+		}
+	}
 
 #define F(i) do { \
 		VduseVirtq *vq = vduse_dev_get_queue(dev, i); \
@@ -312,11 +381,11 @@ int main(int argc, char **argv)
 
 	struct itimerspec t = {
 		.it_interval = {
-			.tv_sec = 0,
+			.tv_sec = 5,
 			.tv_nsec = 0,
 		},
 		.it_value = {
-			.tv_sec = 20,
+			.tv_sec = 5,
 			.tv_nsec = 0,
 		},
 	};
@@ -329,15 +398,9 @@ int main(int argc, char **argv)
 
 	/* schedule */
 
-	struct es *es = es_init(
+	es = es_init(
 		&dev_thread,
-
-		// queue_threads + VIRTIO_TEST_QUEUE_RX,
-		// queue_threads + VIRTIO_TEST_QUEUE_TX,
-		// queue_threads + VIRTIO_TEST_QUEUE_NOTIFY,
-		// queue_threads + VIRTIO_TEST_QUEUE_CTRL,
-
-		// &timer_thread,
+		&timer_thread,
 		NULL);
 	if (!es) {
 		trace_err("es_init()");
@@ -349,12 +412,6 @@ int main(int argc, char **argv)
 		trace_err("es_schedule()");
 		goto error_close_timer_fd;
 	}
-
-	// while (true) {
-	// 	unsigned char v;
-	// 	err = read(dev_thread.fd, &v, 1);
-	// 	trace("read(): %d: %u", err, (unsigned int)v);
-	// }
 
 	trace("done");
 
