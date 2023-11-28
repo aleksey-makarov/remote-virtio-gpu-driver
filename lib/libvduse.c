@@ -203,6 +203,11 @@ int vduse_queue_get_fd(VduseVirtq *vq)
     return vq->fd;
 }
 
+int vduse_queue_get_index(VduseVirtq *vq)
+{
+    return vq->index;
+}
+
 void *vduse_dev_get_priv(VduseDev *dev)
 {
     return dev->priv;

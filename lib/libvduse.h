@@ -77,6 +77,16 @@ VduseDev *vduse_queue_get_dev(VduseVirtq *vq);
 int vduse_queue_get_fd(VduseVirtq *vq);
 
 /**
+ * vduse_queue_get_index:
+ * @vq: specified virtqueue
+ *
+ * Get the virtqueue index.
+ *
+ * Returns: the index of the virtqueue.
+ */
+int vduse_queue_get_index(VduseVirtq *vq);
+
+/**
  * vduse_queue_pop:
  * @vq: specified virtqueue
  * @sz: the size of struct to return (must be >= VduseVirtqElement)
