@@ -35,7 +35,7 @@ static const VduseOps ops = {
     .disable_queue = test_disable_queue,
 };
 
-static int dev_test(void *vctxt)
+static enum es_test_result dev_test(void *vctxt)
 {
 	(void)vctxt;
 
@@ -58,7 +58,7 @@ static void dev_done(void *vctxt) {
 	(void)vctxt;
 }
 /*
-static int rx_test(void *vctxt)
+static enum es_test_result rx_test(void *vctxt)
 {
 	(void)vctxt;
 
@@ -81,7 +81,7 @@ static void rx_done(void *vctxt) {
 	(void)vctxt;
 }
 
-static int tx_test(void *vctxt)
+static enum es_test_result tx_test(void *vctxt)
 {
 	(void)vctxt;
 
@@ -104,7 +104,7 @@ static void tx_done(void *vctxt) {
 	(void)vctxt;
 }
 
-static int notify_test(void *vctxt)
+static enum es_test_result notify_test(void *vctxt)
 {
 	(void)vctxt;
 
@@ -127,7 +127,7 @@ static void notify_done(void *vctxt) {
 	(void)vctxt;
 }
 
-static int ctrl_test(void *vctxt)
+static enum es_test_result ctrl_test(void *vctxt)
 {
 	(void)vctxt;
 
@@ -153,7 +153,7 @@ static void ctrl_done(void *vctxt) {
 
 static struct es_thread timer_thread;
 
-static int timer_test(void *vctxt)
+static enum es_test_result timer_test(void *vctxt)
 {
 	(void)vctxt;
 

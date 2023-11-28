@@ -184,7 +184,7 @@ static struct ctxt ctxt;
 /*
  * Config
  */
-static int config_test(void *vctxt)
+static enum es_test_result config_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_WAIT;
@@ -203,7 +203,7 @@ static void config_done(void *vctxt) { (void)vctxt; }
 /*
  * RX
  */
-static int rx_test(void *vctxt)
+static enum es_test_result rx_test(void *vctxt)
 {
 	(void)vctxt;
 
@@ -292,7 +292,7 @@ static void rx_done(void *vctxt) { (void)vctxt; }
 /*
  * TX
  */
-static int tx_test(void *vctxt)
+static enum es_test_result tx_test(void *vctxt)
 {
 	(void)vctxt;
 	int ret;
@@ -370,7 +370,7 @@ static void tx_done(void *vctxt) { (void)vctxt; }
 /*
  * Notify
  */
-static int notify_test(void *vctxt)
+static enum es_test_result notify_test(void *vctxt)
 {
 	(void)vctxt;
 	/*
@@ -444,7 +444,7 @@ done:
 /*
  * Ctrl
  */
-static int ctrl_test(void *vctxt)
+static enum es_test_result ctrl_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_WAIT;
@@ -463,7 +463,7 @@ static void ctrl_done(void *vctxt) { (void)vctxt; }
 /*
  * Timer
  */
-static int timer_test(void *vctxt)
+static enum es_test_result timer_test(void *vctxt)
 {
 	(void)vctxt;
 	return ES_WAIT;

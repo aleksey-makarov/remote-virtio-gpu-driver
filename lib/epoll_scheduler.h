@@ -1,16 +1,18 @@
 #ifndef __epoll_scheduler_h__
 #define __epoll_scheduler_h__
 
-#define ES_DONE  (0)
-#define ES_EXIT  (1)
-#define ES_READY (2)
-#define ES_WAIT  (3)
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <sys/epoll.h>
 
 struct es;
+
+enum es_test_result {
+	ES_DONE  = 0,
+	ES_EXIT  = 1,
+	ES_READY = 2,
+	ES_WAIT  = 3,
+};
 
 struct es_thread {
 
@@ -31,7 +33,7 @@ struct es_thread {
 	 *     in the current iteration
 	 * - any negative vaule to signal error
 	 */
-	int (*test)(void *ctxt);
+	enum es_test_result (*test)(void *ctxt);
 
 	/*
 	 * Returns
