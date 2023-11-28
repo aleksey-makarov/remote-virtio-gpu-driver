@@ -51,6 +51,12 @@ static int dev_go(uint32_t events, void *vctxt)
 
 	trace();
 
+	int err = vduse_dev_handler(vctxt);
+	if (err < 0) {
+		trace_err("vduse_dev_handler()");
+
+	}
+
 	return 0;
 }
 
@@ -262,6 +268,7 @@ int main(int argc, char **argv)
 		trace_err("vduse_dev_create()");
 		goto error;
 	}
+	dev_thread.ctxt = dev;
 
 	err = vduse_set_reconnect_log_file(dev, "/tmp/vduse-" DRIVER_NAME ".log");
 	if (err) {
