@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
+#include <stddef.h>
 
 #include <linux/virtio_config.h>
 
@@ -16,27 +17,23 @@
 #define DRIVER_NAME "test"
 #define QUEUE_SIZE 16
 
+struct queue {
+	struct es_thread thread;
+	bool enabled;
+	VduseVirtq *vq;
+};
+
+#define container_of(ptr, type, member) ({                    \
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);  \
+	(type *)( (char *)__mptr - offsetof(type,member) );})
+
+static inline struct queue *thread_to_queue(struct es_thread *th)
+{
+	return container_of(th, struct queue, thread);
+}
+
 static struct es *es;
 VduseDev *dev;
-
-static int readfd_uint64(int fd)
-{
-	uint64_t ev;
-	int ret;
-
-	ret = read(fd, &ev, sizeof(ev));
-	if (ret >= 0 && ret != sizeof(ev)) {
-		trace_err("read(): wrong size");
-		return -1;
-	} else if (ret < 0) {
-		if (errno == EAGAIN)
-			return 0;
-		trace_err_p("read() (errno=%d)", errno);
-		return -1;
-	}
-
-	return ev;
-}
 
 static enum es_test_result dev_test(struct es_thread *self)
 {
@@ -65,7 +62,9 @@ static int dev_go(struct es_thread *self, uint32_t events)
 
 static enum es_test_result rx_test(struct es_thread *self)
 {
-	(void)self;
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return ES_EXIT_THREAD;
 
 	trace();
 
@@ -74,17 +73,28 @@ static enum es_test_result rx_test(struct es_thread *self)
 
 static int rx_go(struct es_thread *self, uint32_t events)
 {
-	(void)self;
 	(void)events;
-
 	trace();
+
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return 0;
+
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
+	if (ret < 0) {
+		trace_err("eventfd_read()");
+		return -1;
+	}
 
 	return 0;
 }
 
 static enum es_test_result tx_test(struct es_thread *self)
 {
-	(void)self;
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return ES_EXIT_THREAD;
 
 	trace();
 
@@ -93,17 +103,28 @@ static enum es_test_result tx_test(struct es_thread *self)
 
 static int tx_go(struct es_thread *self, uint32_t events)
 {
-	(void)self;
 	(void)events;
-
 	trace();
+
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return 0;
+
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
+	if (ret < 0) {
+		trace_err("eventfd_read()");
+		return -1;
+	}
 
 	return 0;
 }
 
 static enum es_test_result notify_test(struct es_thread *self)
 {
-	(void)self;
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return ES_EXIT_THREAD;
 
 	trace();
 
@@ -112,17 +133,28 @@ static enum es_test_result notify_test(struct es_thread *self)
 
 static int notify_go(struct es_thread *self, uint32_t events)
 {
-	(void)self;
 	(void)events;
-
 	trace();
+
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return 0;
+
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
+	if (ret < 0) {
+		trace_err("eventfd_read()");
+		return -1;
+	}
 
 	return 0;
 }
 
 static enum es_test_result ctrl_test(struct es_thread *self)
 {
-	(void)self;
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return ES_EXIT_THREAD;
 
 	trace();
 
@@ -131,10 +163,19 @@ static enum es_test_result ctrl_test(struct es_thread *self)
 
 static int ctrl_go(struct es_thread *self, uint32_t events)
 {
-	(void)self;
 	(void)events;
-
 	trace();
+
+	struct queue *q = thread_to_queue(self);
+	if (!q->enabled)
+		return 0;
+
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
+	if (ret < 0) {
+		trace_err("eventfd_read()");
+		return -1;
+	}
 
 	return 0;
 }
@@ -153,11 +194,11 @@ static int timer_go(struct es_thread *self, uint32_t events)
 	(void)events;
 
 	static unsigned int n = 0;
-	int ret;
 
-	ret = readfd_uint64(timer_thread.fd);
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
 	if (ret < 0) {
-		trace_err("readfd_uint64()");
+		trace_err("eventfd_read()");
 		return -1;
 	}
 
@@ -173,12 +214,6 @@ static struct es_thread dev_thread = {
 	.test   = dev_test,
 	.go     = dev_go,
 	.done   = NULL,
-};
-
-struct queue {
-	struct es_thread thread;
-	bool enabled;
-	VduseVirtq *vq;
 };
 
 static struct queue queues[VIRTIO_TEST_QUEUE_MAX] = {
