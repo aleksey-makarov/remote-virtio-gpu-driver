@@ -8,6 +8,7 @@
 
 #include "libvirtiolo.h"
 #include "epoll_scheduler.h"
+#include "device.h"
 
 #define TRACE_FILE "test.c"
 #include "trace.h"
@@ -26,104 +27,6 @@ static const char *q_name(int q)
 }
 
 #endif
-
-#define K 1024
-#define M (K * K)
-#define BUF_LEN (64 * M)
-
-static char buf[BUF_LEN];
-static unsigned long int buf_data;  // first occupied by data
-static unsigned long int buf_empty; // first empty: always buf_data <= buf_empty
-
-static void serv_reset(void)
-{
-	buf_data = buf_empty = 0;
-}
-
-static unsigned long int serv_data_length(void)
-{
-	return buf_empty - buf_data;
-}
-
-static unsigned long int serv_free_space(void)
-{
-	return BUF_LEN - serv_data_length();
-}
-
-static unsigned int min_ui(unsigned int a, unsigned int b)
-{
-	return a < b ? a : b;
-}
-
-static int serv_put(char *data, unsigned int length)
-{
-	if (serv_free_space() < length) {
-		trace_err("free=%lu, length=%u", serv_free_space(), length);
-		return -1;
-	}
-
-	unsigned int buf_empty_index = buf_empty % BUF_LEN;
-	unsigned int length1 = min_ui(length, BUF_LEN - buf_empty_index);
-
-	memcpy(buf + buf_empty_index, data, length1);
-
-	if (length1 != length)
-		memcpy(buf, data + length1, length - length1);
-
-	buf_empty += length;
-
-	return 0;
-}
-
-static int serv_put_buf(struct vlo_buf *req)
-{
-	unsigned int i;
-	int err;
-
-	for (i = 0; i < req->ion; i++) {
-		err = serv_put(req->io[i].iov_base, req->io[i].iov_len);
-		if (err) {
-			trace_err("error @%u", i);
-			return err;
-		}
-	}
-
-	return 0;
-}
-
-static void serv_get(char *data, unsigned int length)
-{
-	assert(length <= serv_data_length());
-
-	unsigned int buf_data_index = buf_data % BUF_LEN;
-	unsigned int length1 = min_ui(length, BUF_LEN - buf_data_index);
-
-	memcpy(data, buf + buf_data_index, length1);
-
-	if (length1 != length)
-		memcpy(data + length1, buf, length - length1);
-
-	buf_data += length;
-}
-
-static int serv_get_buf(struct vlo_buf *req)
-{
-	int ret = 0;
-	unsigned int i;
-
-	unsigned int available = serv_data_length();
-
-	assert(available > 0);
-
-	for (i = 0; i < req->ion && available; i++) {
-		unsigned int length1 = min_ui(available, req->io[i].iov_len);
-		serv_get(req->io[i].iov_base, length1);
-		ret += length1;
-		available -= length1;
-	}
-
-	return ret;
-}
 
 static int readfd_uint64(int fd)
 {
@@ -178,7 +81,7 @@ static enum es_test_result rx_test(struct es_thread *self)
 
 	int ret;
 
-	if (serv_data_length() == 0) {
+	if (device_data_length() == 0) {
 		rx_thread.events = 0;
 		return ES_WAIT;
 	}
@@ -241,7 +144,7 @@ static int rx_go(struct es_thread *self, uint32_t events)
 		goto done;
 	}
 
-	ret = serv_get_buf(req);
+	ret = device_get(req->io, req->ion);
 	if (ret < 0)
 		trace_err("serv_put_buf()");
 
@@ -321,7 +224,7 @@ static int tx_go(struct es_thread *self, uint32_t events)
 		goto done;
 	}
 
-	ret = serv_put_buf(req);
+	ret = device_put(req->io, req->ion);
 	if (ret < 0)
 		trace_err("serv_put_buf()");
 
@@ -513,7 +416,7 @@ int main(int argc, char **argv)
 		.something = 3,
 	};
 
-	serv_reset();
+	device_reset();
 
 	vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
 	if (!vl) {
