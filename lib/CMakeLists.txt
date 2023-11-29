@@ -25,9 +25,9 @@ set_target_properties(virtiolo
 	)
 
 #
-# test
+# test_lo
 #
-add_executable(test_lo test_lo.c epoll_scheduler.c)
+add_executable(test_lo test_lo.c epoll_scheduler.c device.c)
 target_link_libraries(test_lo PRIVATE virtiolo)
 
 #
