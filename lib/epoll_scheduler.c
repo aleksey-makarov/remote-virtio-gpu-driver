@@ -223,7 +223,7 @@ int es_schedule(struct es *es)
 				else
 					trace("\"%s\" requested shutdown", th->name);
 				goto done;
-			} else if (ret == ES_EXIT) {
+			} else if (ret == ES_EXIT_THREAD) {
 				ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
 				if (ret < 0) {
 					trace_err_p("epoll_ctl(DEL) (\"%s\")", th->name);

@@ -8,10 +8,10 @@
 struct es;
 
 enum es_test_result {
-	ES_DONE  = 0,
-	ES_EXIT  = 1,
-	ES_READY = 2,
-	ES_WAIT  = 3,
+	ES_DONE        = 0,
+	ES_EXIT_THREAD = 1,
+	ES_READY       = 2,
+	ES_WAIT        = 3,
 };
 
 struct es_thread {
@@ -24,7 +24,7 @@ struct es_thread {
 	 * `test` should be non-null
 	 * Returns:
 	 * - ES_DONE to exit all threads and quit `es_schedule()`
-	 * - ES_EXIT to gracefully exit this thread
+	 * - ES_EXIT_THREAD to gracefully exit this thread
 	 * - ES_READY ready to `go()`
 	 *     don't wait on the `fd` for this thread, mark it as ready
 	 * - ES_WAIT wait for the events specified in the `events` field then `go()`
