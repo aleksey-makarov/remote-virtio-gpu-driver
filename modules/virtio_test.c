@@ -432,9 +432,10 @@ static int queue_init(struct virtqueue *q, struct scatterlist *sgs, unsigned int
 		ret = virtqueue_add_inbuf(q, sg, 1, sg, GFP_KERNEL);
 		if (ret < 0) {
 			__free_page(p);
-			MTRACE("* virtqueue_add_inbuf(): %d, buffer %u", ret, i);
-			if (i == 0)
+			if (i == 0) {
+				MTRACE("* virtqueue_add_inbuf(): %d", ret);
 				goto error;
+			}
 			break;
 		}
 	}
