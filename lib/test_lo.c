@@ -345,7 +345,7 @@ static enum es_test_result notify_test(struct es_thread *self)
 	 * new buffers available from virtio.
 	 * Now we just bail out if there is no virtio buffers available.
 	 */
-	return ES_EXIT;
+	return ES_EXIT_THREAD;
 }
 
 static int notify_go(struct es_thread *self, uint32_t events)
