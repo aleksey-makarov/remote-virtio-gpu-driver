@@ -117,6 +117,31 @@ static int tx_go(struct es_thread *self, uint32_t events)
 		return -1;
 	}
 
+	while (1) {
+		VduseVirtqElement *req = vduse_queue_pop(q->vq, sizeof(VduseVirtqElement));
+		if (!req)
+			break;
+
+		// trace("index=%u, out_num=%u, in_num=%u", req->index, req->out_num, req->in_num);
+
+		if (req->out_num == 0) {
+			trace("???");
+		} else {
+			struct iovec *iov = req->out_sg;
+			if (iov->iov_len < 8) {
+				trace("iov_len=%lu", iov->iov_len);
+			} else {
+				unsigned char *p = iov->iov_base;
+				trace("iov_len=%lu 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+					iov->iov_len, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
+			}
+		}
+
+		vduse_queue_push(q->vq, req, 0);
+		vduse_queue_notify(q->vq);
+		free(req);
+	}
+
 	return 0;
 }
 
