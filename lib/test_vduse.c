@@ -178,7 +178,6 @@ static struct es_thread dev_thread = {
 struct queue {
 	struct es_thread thread;
 	bool enabled;
-	int fd;
 	VduseVirtq *vq;
 };
 
@@ -242,11 +241,11 @@ static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
 
 	struct queue *q = queues + index;
 
-	trace("%s", q->thread.name);
-
-	q->fd = vduse_queue_get_fd(vq);
+	q->thread.fd = vduse_queue_get_fd(vq);
 	q->vq = vq;
 	q->enabled = true;
+
+	trace("%s, fd=%d", q->thread.name, q->thread.fd);
 
 	int err = es_add(es, &q->thread);
 	if (err)
@@ -312,14 +311,6 @@ int main(int argc, char **argv)
 		err = vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
 		if (err) {
 			trace_err("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
-			goto error_dev_destroy;
-		}
-	}
-
-	for (int i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
-		VduseVirtq *vq = vduse_dev_get_queue(dev, i); \
-		if (!vq) {
-			trace_err("vduse_dev_get_queue(%d)", i);
 			goto error_dev_destroy;
 		}
 	}

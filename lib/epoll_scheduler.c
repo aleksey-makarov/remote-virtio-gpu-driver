@@ -74,9 +74,10 @@ static int _es_add(struct es *es, struct es_thread *th)
 	th->private.data.u32 = es->data_len;
 	th->private.events = 0;
 
+	trace("epoll_ctl(ADD) n=%u, epoll_fd=%d, fd=%d", es->data_len, es->epoll_fd, th->fd);
 	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
 	if (ret < 0) {
-		trace_err_p("epoll_ctl(ADD) %u", es->data_len);
+		trace_err_p("epoll_ctl(ADD) n=%u", es->data_len);
 		return ret;
 	}
 
