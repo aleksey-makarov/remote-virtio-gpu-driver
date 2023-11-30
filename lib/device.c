@@ -85,9 +85,9 @@ static void device_get1(char *data, unsigned int length)
 	buf_data += length;
 }
 
-int device_get(struct iovec *v, unsigned int n)
+unsigned int device_get(struct iovec *v, unsigned int n)
 {
-	int ret = 0;
+	unsigned int ret = 0;
 	unsigned int i;
 
 	unsigned int available = device_get_data_length();

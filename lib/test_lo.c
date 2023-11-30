@@ -108,7 +108,8 @@ static int rx_go(struct es_thread *self, uint32_t events)
 	(void)self;
 	(void)events;
 
-	int ret;
+	int ret = 0;
+	unsigned int len = 0;
 
 	// trace_err("events=0x%x", events);
 
@@ -144,19 +145,13 @@ static int rx_go(struct es_thread *self, uint32_t events)
 		goto done;
 	}
 
-	ret = device_get(req->io, req->ion);
-	if (ret < 0)
-		trace_err("serv_put_buf()");
+	len = device_get(req->io, req->ion);
 
 done:
-	vlo_buf_put(req, ret);
+	vlo_buf_put(req, len);
 	vlo_kick(vl, VIRTIO_TEST_QUEUE_RX);
 
-	// ret = ret < 0 ? -1 : 0;
-	// trace_err("ret=%d", ret);
-	// return ret;
-
-	return ret < 0 ? -1 : 0;
+	return ret;
 }
 
 /*

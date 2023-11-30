@@ -11,6 +11,6 @@ static inline unsigned long int device_get_free_space(void)
 }
 
 int device_put(struct iovec *v, unsigned int n);
-int device_get(struct iovec *v, unsigned int n);
+unsigned int device_get(struct iovec *v, unsigned int n);
 
 #endif
