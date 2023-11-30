@@ -8,6 +8,7 @@
 
 #include "libvduse.h"
 #include "epoll_scheduler.h"
+#include "device.h"
 
 #include <linux/virtio_test.h>
 
@@ -39,8 +40,6 @@ static enum es_test_result dev_test(struct es_thread *self)
 {
 	(void)self;
 
-	trace();
-
 	return ES_WAIT;
 }
 
@@ -48,8 +47,6 @@ static int dev_go(struct es_thread *self, uint32_t events)
 {
 	(void)self;
 	(void)events;
-
-	trace();
 
 	int err = vduse_dev_handler(dev);
 	if (err < 0) {
@@ -66,7 +63,36 @@ static enum es_test_result rx_test(struct es_thread *self)
 	if (!q->enabled)
 		return ES_EXIT_THREAD;
 
-	trace();
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
+	if (ret < 0 && errno != EAGAIN) {
+		trace_err_p("eventfd_read()");
+		return -1;
+	}
+
+	while (device_get_data_length()) {
+
+		VduseVirtqElement *req = vduse_queue_pop(q->vq, sizeof(VduseVirtqElement));
+		if (!req)
+			break;
+
+		if (req->in_num == 0 || req->out_num != 0) {
+			trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
+			return ES_DONE;
+		}
+
+		unsigned int err = device_get(req->in_sg, req->in_num);
+		vduse_queue_push(q->vq, req, err);
+		free(req);
+	}
+
+	vduse_queue_notify(q->vq);
+
+	if (device_get_data_length()) {
+		self->events = EPOLLIN;
+	} else {
+		self->events = 0;
+	}
 
 	return ES_WAIT;
 }
@@ -74,18 +100,10 @@ static enum es_test_result rx_test(struct es_thread *self)
 static int rx_go(struct es_thread *self, uint32_t events)
 {
 	(void)events;
-	trace();
 
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
 		return 0;
-
-	eventfd_t ev;
-	int ret = eventfd_read(self->fd, &ev);
-	if (ret < 0) {
-		trace_err("eventfd_read()");
-		return -1;
-	}
 
 	return 0;
 }
@@ -96,15 +114,12 @@ static enum es_test_result tx_test(struct es_thread *self)
 	if (!q->enabled)
 		return ES_EXIT_THREAD;
 
-	trace();
-
 	return ES_WAIT;
 }
 
 static int tx_go(struct es_thread *self, uint32_t events)
 {
 	(void)events;
-	trace();
 
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
@@ -123,24 +138,35 @@ static int tx_go(struct es_thread *self, uint32_t events)
 			break;
 
 		// trace("index=%u, out_num=%u, in_num=%u", req->index, req->out_num, req->in_num);
+		// if (req->out_num == 0) {
+		// 	trace("???");
+		// } else {
+		// 	struct iovec *iov = req->out_sg;
+		// 	if (iov->iov_len < 8) {
+		// 		trace("iov_len=%lu", iov->iov_len);
+		// 	} else {
+		// 		unsigned char *p = iov->iov_base;
+		// 		trace("iov_len=%lu 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+		// 			iov->iov_len, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
+		// 	}
+		// }
 
-		if (req->out_num == 0) {
-			trace("???");
-		} else {
-			struct iovec *iov = req->out_sg;
-			if (iov->iov_len < 8) {
-				trace("iov_len=%lu", iov->iov_len);
-			} else {
-				unsigned char *p = iov->iov_base;
-				trace("iov_len=%lu 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-					iov->iov_len, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-			}
+		if (req->out_num == 0 || req->in_num != 0) {
+			trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
+			return -1;
+		}
+
+		int err = device_put(req->out_sg, req->out_num);
+		if (err < 0) {
+			trace_err("device_put()");
+			return -1;
 		}
 
 		vduse_queue_push(q->vq, req, 0);
-		vduse_queue_notify(q->vq);
 		free(req);
 	}
+
+	vduse_queue_notify(q->vq);
 
 	return 0;
 }
@@ -151,15 +177,12 @@ static enum es_test_result notify_test(struct es_thread *self)
 	if (!q->enabled)
 		return ES_EXIT_THREAD;
 
-	trace();
-
 	return ES_WAIT;
 }
 
 static int notify_go(struct es_thread *self, uint32_t events)
 {
 	(void)events;
-	trace();
 
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
@@ -181,15 +204,12 @@ static enum es_test_result ctrl_test(struct es_thread *self)
 	if (!q->enabled)
 		return ES_EXIT_THREAD;
 
-	trace();
-
 	return ES_WAIT;
 }
 
 static int ctrl_go(struct es_thread *self, uint32_t events)
 {
 	(void)events;
-	trace();
 
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
@@ -244,38 +264,38 @@ static struct es_thread dev_thread = {
 static struct queue queues[VIRTIO_TEST_QUEUE_MAX] = {
 	[VIRTIO_TEST_QUEUE_RX] = {
 		.thread = {
-		.name   = "queue_rx",
-		.events = EPOLLIN,
-		.test   = rx_test,
-		.go     = rx_go,
-		.done   = NULL,
+			.name   = "queue_rx",
+			.events = 0,
+			.test   = rx_test,
+			.go     = rx_go,
+			.done   = NULL,
 		},
 	},
 	[VIRTIO_TEST_QUEUE_TX] = {
 		.thread = {
-		.name   = "queue_tx",
-		.events = EPOLLIN,
-		.test   = tx_test,
-		.go     = tx_go,
-		.done   = NULL,
+			.name   = "queue_tx",
+			.events = EPOLLIN,
+			.test   = tx_test,
+			.go     = tx_go,
+			.done   = NULL,
 		},
 	},
 	[VIRTIO_TEST_QUEUE_NOTIFY] = {
 		.thread = {
-		.name   = "queue_notify",
-		.events = EPOLLIN,
-		.test   = notify_test,
-		.go     = notify_go,
-		.done   = NULL,
+			.name   = "queue_notify",
+			.events = 0,
+			.test   = notify_test,
+			.go     = notify_go,
+			.done   = NULL,
 		},
 	},
 	[VIRTIO_TEST_QUEUE_CTRL] = {
 		.thread = {
-		.name   = "queue_ctl",
-		.events = EPOLLIN,
-		.test   = ctrl_test,
-		.go     = ctrl_go,
-		.done   = NULL,
+			.name   = "queue_ctl",
+			.events = EPOLLIN,
+			.test   = ctrl_test,
+			.go     = ctrl_go,
+			.done   = NULL,
 		},
 	},
 };
@@ -344,6 +364,8 @@ int main(int argc, char **argv)
 	(void)argv;
 
 	trace("hello");
+
+	device_reset();
 
 	/* vduse */
 
