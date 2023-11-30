@@ -4,6 +4,8 @@
 #define TRACE_FILE "device.c"
 #include "trace.h"
 
+#include "device.h"
+
 #define K 1024
 #define M (K * K)
 #define BUF_LEN (64 * M)
@@ -17,14 +19,14 @@ void device_reset(void)
 	buf_data = buf_empty = 0;
 }
 
-unsigned long int device_data_length(void)
+unsigned long int device_get_buffer_size(void)
 {
-	return buf_empty - buf_data;
+	return BUF_LEN;
 }
 
-unsigned long int device_free_space(void)
+unsigned long int device_get_data_length(void)
 {
-	return BUF_LEN - device_data_length();
+	return buf_empty - buf_data;
 }
 
 static unsigned int min_ui(unsigned int a, unsigned int b)
@@ -34,8 +36,8 @@ static unsigned int min_ui(unsigned int a, unsigned int b)
 
 static int device_put1(char *data, unsigned int length)
 {
-	if (device_free_space() < length) {
-		trace_err("free=%lu, length=%u", device_free_space(), length);
+	if (device_get_free_space() < length) {
+		trace_err("free=%lu, length=%u", device_get_free_space(), length);
 		return -1;
 	}
 
@@ -70,7 +72,7 @@ int device_put(struct iovec *v, unsigned int n)
 
 static void device_get1(char *data, unsigned int length)
 {
-	assert(length <= device_data_length());
+	assert(length <= device_get_data_length());
 
 	unsigned int buf_data_index = buf_data % BUF_LEN;
 	unsigned int length1 = min_ui(length, BUF_LEN - buf_data_index);
@@ -88,7 +90,7 @@ int device_get(struct iovec *v, unsigned int n)
 	int ret = 0;
 	unsigned int i;
 
-	unsigned int available = device_data_length();
+	unsigned int available = device_get_data_length();
 
 	assert(available > 0);
 

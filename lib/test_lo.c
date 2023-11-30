@@ -81,7 +81,7 @@ static enum es_test_result rx_test(struct es_thread *self)
 
 	int ret;
 
-	if (device_data_length() == 0) {
+	if (device_get_data_length() == 0) {
 		rx_thread.events = 0;
 		return ES_WAIT;
 	}
