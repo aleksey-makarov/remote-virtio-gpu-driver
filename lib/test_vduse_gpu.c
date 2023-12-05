@@ -5,18 +5,24 @@
 #include <stddef.h>
 
 #include <linux/virtio_config.h>
+#include <linux/virtio_gpu.h>
+#include <linux/virtio_ids.h>
 
 #include "libvduse.h"
 #include "epoll_scheduler.h"
 #include "device.h"
 
-#include <linux/virtio_test.h>
-
-#define TRACE_FILE "test_vduse.c"
+#define TRACE_FILE "test_vduse_gpu.c"
 #include "trace.h"
 
-#define DRIVER_NAME "test"
+#define DRIVER_NAME "test_gpu"
 #define QUEUE_SIZE 16
+
+#define QUEUE_CMD    0
+#define QUEUE_CURSOR 1
+#define QUEUE_MAX    2
+
+#define PCI_VENDOR_ID_REDHAT_QUMRANET 0x1af4
 
 struct queue {
 	struct es_thread thread;
@@ -57,7 +63,7 @@ static int dev_go(struct es_thread *self, uint32_t events)
 	return 0;
 }
 
-static enum es_test_result rx_test(struct es_thread *self)
+static enum es_test_result cmd_test(struct es_thread *self)
 {
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
@@ -97,7 +103,7 @@ static enum es_test_result rx_test(struct es_thread *self)
 	return ES_WAIT;
 }
 
-static int rx_go(struct es_thread *self, uint32_t events)
+static int cmd_go(struct es_thread *self, uint32_t events)
 {
 	(void)events;
 
@@ -108,7 +114,7 @@ static int rx_go(struct es_thread *self, uint32_t events)
 	return 0;
 }
 
-static enum es_test_result tx_test(struct es_thread *self)
+static enum es_test_result cursor_test(struct es_thread *self)
 {
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
@@ -117,7 +123,7 @@ static enum es_test_result tx_test(struct es_thread *self)
 	return ES_WAIT;
 }
 
-static int tx_go(struct es_thread *self, uint32_t events)
+static int cursor_go(struct es_thread *self, uint32_t events)
 {
 	(void)events;
 
@@ -171,60 +177,6 @@ static int tx_go(struct es_thread *self, uint32_t events)
 	return 0;
 }
 
-static enum es_test_result notify_test(struct es_thread *self)
-{
-	struct queue *q = thread_to_queue(self);
-	if (!q->enabled)
-		return ES_EXIT_THREAD;
-
-	return ES_WAIT;
-}
-
-static int notify_go(struct es_thread *self, uint32_t events)
-{
-	(void)events;
-
-	struct queue *q = thread_to_queue(self);
-	if (!q->enabled)
-		return 0;
-
-	eventfd_t ev;
-	int ret = eventfd_read(self->fd, &ev);
-	if (ret < 0) {
-		trace_err("eventfd_read()");
-		return -1;
-	}
-
-	return 0;
-}
-
-static enum es_test_result ctrl_test(struct es_thread *self)
-{
-	struct queue *q = thread_to_queue(self);
-	if (!q->enabled)
-		return ES_EXIT_THREAD;
-
-	return ES_WAIT;
-}
-
-static int ctrl_go(struct es_thread *self, uint32_t events)
-{
-	(void)events;
-
-	struct queue *q = thread_to_queue(self);
-	if (!q->enabled)
-		return 0;
-
-	eventfd_t ev;
-	int ret = eventfd_read(self->fd, &ev);
-	if (ret < 0) {
-		trace_err("eventfd_read()");
-		return -1;
-	}
-
-	return 0;
-}
-
 static struct es_thread timer_thread;
 
 static enum es_test_result timer_test(struct es_thread *self)
@@ -261,40 +213,22 @@ static struct es_thread dev_thread = {
 	.done   = NULL,
 };
 
-static struct queue queues[VIRTIO_TEST_QUEUE_MAX] = {
-	[VIRTIO_TEST_QUEUE_RX] = {
+static struct queue queues[QUEUE_MAX] = {
+	[QUEUE_CMD] = {
 		.thread = {
-			.name   = "queue_rx",
+			.name   = "queue_cmd",
 			.events = 0,
-			.test   = rx_test,
-			.go     = rx_go,
+			.test   = cmd_test,
+			.go     = cmd_go,
 			.done   = NULL,
 		},
 	},
-	[VIRTIO_TEST_QUEUE_TX] = {
+	[QUEUE_CURSOR] = {
 		.thread = {
-			.name   = "queue_tx",
+			.name   = "queue_cursor",
 			.events = EPOLLIN,
-			.test   = tx_test,
-			.go     = tx_go,
-			.done   = NULL,
-		},
-	},
-	[VIRTIO_TEST_QUEUE_NOTIFY] = {
-		.thread = {
-			.name   = "queue_notify",
-			.events = 0,
-			.test   = notify_test,
-			.go     = notify_go,
-			.done   = NULL,
-		},
-	},
-	[VIRTIO_TEST_QUEUE_CTRL] = {
-		.thread = {
-			.name   = "queue_ctl",
-			.events = EPOLLIN,
-			.test   = ctrl_test,
-			.go     = ctrl_go,
+			.test   = cursor_test,
+			.go     = cursor_go,
 			.done   = NULL,
 		},
 	},
@@ -314,7 +248,7 @@ static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
 
 	int index = vduse_queue_get_index(vq);
 
-	if (index < 0 || VIRTIO_TEST_QUEUE_MAX <= index) {
+	if (index < 0 || QUEUE_MAX <= index) {
 		trace_err("index == %d", index);
 		return;
 	}
@@ -338,7 +272,7 @@ static void test_disable_queue(VduseDev *dev, VduseVirtq *vq)
 
 	int index = vduse_queue_get_index(vq);
 
-	if (index < 0 || VIRTIO_TEST_QUEUE_MAX <= index) {
+	if (index < 0 || QUEUE_MAX <= index) {
 		trace_err("index == %d", index);
 		return;
 	}
@@ -369,13 +303,16 @@ int main(int argc, char **argv)
 
 	/* vduse */
 
-	struct virtio_test_config dev_cfg = {
-		.something = 0xdeadbeef12345678,
+	struct virtio_gpu_config dev_cfg = {
+		.events_read  = 0,
+		.events_clear = 0,
+		.num_scanouts = 1,
+		.num_capsets  = 1,
 	};
 
-	dev = vduse_dev_create(DRIVER_NAME, VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID,
-					 driver_features, VIRTIO_TEST_QUEUE_MAX,
-					 sizeof(struct virtio_test_config), (char *)&dev_cfg, &ops, NULL);
+	dev = vduse_dev_create(DRIVER_NAME, VIRTIO_ID_GPU, PCI_VENDOR_ID_REDHAT_QUMRANET,
+					 driver_features, QUEUE_MAX,
+					 sizeof(struct virtio_gpu_config), (char *)&dev_cfg, &ops, NULL);
 	if (!dev) {
 		trace_err("vduse_dev_create()");
 		goto error;
@@ -389,7 +326,7 @@ int main(int argc, char **argv)
 		goto error_dev_destroy;
 	}
 
-	for (int i = 0; i < VIRTIO_TEST_QUEUE_MAX; i++) {
+	for (int i = 0; i < QUEUE_MAX; i++) {
 		err = vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
 		if (err) {
 			trace_err("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
