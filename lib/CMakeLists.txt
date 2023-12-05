@@ -42,12 +42,18 @@ add_executable(test_vduse test_vduse.c)
 target_link_libraries(test_vduse PRIVATE misc)
 
 #
+# test_vduse
+#
+add_executable(test_vduse_gpu test_vduse_gpu.c)
+target_link_libraries(test_vduse_gpu PRIVATE misc)
+
+#
 # install
 #
 include(GNUInstallDirs)
 
 configure_file(libvirtiolo.pc.in libvirtiolo.pc @ONLY)
 
-install(TARGETS virtiolo test_lo test_vduse)
+install(TARGETS virtiolo test_lo test_vduse test_vduse_gpu)
 install(FILES libvirtiolo.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libvirtiolo.pc DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
