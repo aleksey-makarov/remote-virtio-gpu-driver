@@ -28,7 +28,10 @@ with lib; {
       extraModulePackages = [
         kernelPackages.virtio-lo
         (kernelPackages.vduse.overrideAttrs (_: {
-          patches = [./vduse/0001-vduse-Enable-test-driver.patch];
+          patches = [
+            ./vduse/0001-vduse-Enable-GPU.patch
+            ./vduse/0002-vduse-Enable-test-driver.patch
+          ];
         }))
       ];
       kernelModules = ["vduse" "virtio-test"];
