@@ -40,7 +40,7 @@ static inline struct queue *thread_to_queue(struct es_thread *th)
 }
 
 static struct es *es;
-VduseDev *dev;
+static VduseDev *dev;
 
 static enum es_test_result dev_test(struct es_thread *self)
 {
@@ -69,37 +69,6 @@ static enum es_test_result cmd_test(struct es_thread *self)
 	if (!q->enabled)
 		return ES_EXIT_THREAD;
 
-	eventfd_t ev;
-	int ret = eventfd_read(self->fd, &ev);
-	if (ret < 0 && errno != EAGAIN) {
-		trace_err_p("eventfd_read()");
-		return -1;
-	}
-
-	while (device_get_data_length()) {
-
-		VduseVirtqElement *req = vduse_queue_pop(q->vq, sizeof(VduseVirtqElement));
-		if (!req)
-			break;
-
-		if (req->in_num == 0 || req->out_num != 0) {
-			trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
-			return ES_DONE;
-		}
-
-		unsigned int err = device_get(req->in_sg, req->in_num);
-		vduse_queue_push(q->vq, req, err);
-		free(req);
-	}
-
-	vduse_queue_notify(q->vq);
-
-	if (device_get_data_length()) {
-		self->events = EPOLLIN;
-	} else {
-		self->events = 0;
-	}
-
 	return ES_WAIT;
 }
 
@@ -110,6 +79,26 @@ static int cmd_go(struct es_thread *self, uint32_t events)
 	struct queue *q = thread_to_queue(self);
 	if (!q->enabled)
 		return 0;
+
+	eventfd_t ev;
+	int ret = eventfd_read(self->fd, &ev);
+	if (ret < 0) {
+		trace_err("eventfd_read()");
+		return -1;
+	}
+
+	while (1) {
+		VduseVirtqElement *req = vduse_queue_pop(q->vq, sizeof(VduseVirtqElement));
+		if (!req)
+			break;
+
+		trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
+
+		vduse_queue_push(q->vq, req, 0);
+		free(req);
+	}
+
+	vduse_queue_notify(q->vq);
 
 	return 0;
 }
@@ -143,30 +132,7 @@ static int cursor_go(struct es_thread *self, uint32_t events)
 		if (!req)
 			break;
 
-		// trace("index=%u, out_num=%u, in_num=%u", req->index, req->out_num, req->in_num);
-		// if (req->out_num == 0) {
-		// 	trace("???");
-		// } else {
-		// 	struct iovec *iov = req->out_sg;
-		// 	if (iov->iov_len < 8) {
-		// 		trace("iov_len=%lu", iov->iov_len);
-		// 	} else {
-		// 		unsigned char *p = iov->iov_base;
-		// 		trace("iov_len=%lu 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-		// 			iov->iov_len, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-		// 	}
-		// }
-
-		if (req->out_num == 0 || req->in_num != 0) {
-			trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
-			return -1;
-		}
-
-		int err = device_put(req->out_sg, req->out_num);
-		if (err < 0) {
-			trace_err("device_put()");
-			return -1;
-		}
+		trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
 
 		vduse_queue_push(q->vq, req, 0);
 		free(req);
@@ -217,7 +183,7 @@ static struct queue queues[QUEUE_MAX] = {
 	[QUEUE_CMD] = {
 		.thread = {
 			.name   = "queue_cmd",
-			.events = 0,
+			.events = EPOLLIN,
 			.test   = cmd_test,
 			.go     = cmd_go,
 			.done   = NULL,
@@ -292,7 +258,7 @@ static const VduseOps ops = {
 int main(int argc, char **argv)
 {
 	int err;
-	uint64_t driver_features = vduse_get_virtio_features();
+	uint64_t driver_features = vduse_get_virtio_features() | VIRTIO_GPU_F_VIRGL;
 
 	(void)argc;
 	(void)argv;
