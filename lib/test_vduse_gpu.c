@@ -10,7 +10,6 @@
 
 #include "libvduse.h"
 #include "epoll_scheduler.h"
-#include "device.h"
 
 #define TRACE_FILE "test_vduse_gpu.c"
 #include "trace.h"
@@ -264,8 +263,6 @@ int main(int argc, char **argv)
 	(void)argv;
 
 	trace("hello");
-
-	device_reset();
 
 	/* vduse */
 
