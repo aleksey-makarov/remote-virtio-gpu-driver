@@ -8,10 +8,7 @@
 with lib; {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
-    # (modulesPath + "/profiles/minimal.nix")
     (modulesPath + "/virtualisation/qemu-vm.nix")
-    # (modulesPath + "/services/misc/spice-vdagentd.nix")
-    # (modulesPath + "/services/ttys/gpm.nix")
   ];
 
   # https://nixos.wiki/wiki/Linux_kernel
@@ -23,11 +20,9 @@ with lib; {
     # KERNEL
 
     boot = rec {
-      kernelPackages = (import ./linuxPackages.nix) pkgs;
-
       extraModulePackages = [
-        kernelPackages.virtio-lo
-        (kernelPackages.vduse.overrideAttrs (_: {
+        pkgs.linuxPackages.virtio-lo
+        (pkgs.linuxPackages.vduse.overrideAttrs (_: {
           patches = [
             ./vduse/0001-vduse-Enable-GPU.patch
             ./vduse/0002-vduse-Enable-test-driver.patch
@@ -54,9 +49,6 @@ with lib; {
     services.getty.autologinUser = "root";
 
     virtualisation = {
-      # diskSize = 8000; # MB
-      # diskImage = "/home/amakarov/work/uhmi-nix/nixos.qcow2";
-      # writableStoreUseTmpfs = false;
       memorySize = 4 * 1024;
       cores = 4;
       forwardPorts = [
@@ -92,17 +84,7 @@ with lib; {
     # services.openssh.passwordAuthentication = true;
 
     fonts.packages = with pkgs; [
-      ## good:
       noto-fonts
-      # noto-fonts-cjk
-      # noto-fonts-emoji
-
-      ## good ones:
-      # fira-code
-      # fira-code-symbols
-
-      ## too dense and does not work with midnight commander
-      # mplus-outline-fonts.githubRelease
     ];
 
     environment.systemPackages = with pkgs; [
@@ -123,11 +105,6 @@ with lib; {
       weston
 
       iproute2
-
-      # remote-virtio-gpu
-      # remote-virtio-gpu.src
-
-      # uhmitest
 
       gst_all_1.gstreamer # this is .bin (probably this is a bug)
       gst_all_1.gstreamer.out

@@ -27,9 +27,8 @@
   }: let
     system = "x86_64-linux";
 
-    myLinuxPackages = (import ./linuxPackages.nix) pkgs;
-
     overlay = _: super: {
+      linuxPackages = super.linuxPackages_6_6;
       linuxKernel =
         super.linuxKernel
         // {
@@ -38,13 +37,10 @@
             vduse = lpsuper.callPackage ./vduse {};
           }));
         };
-      libvirtiolo = super.callPackage ./lib {
-        linuxPackages = myLinuxPackages;
-      };
+      libvirtiolo = super.callPackage ./lib {};
     };
 
     pkgs = (nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay;
-    pkgs-nolo = nixpkgs.legacyPackages.${system}.extend nixGL.overlay;
 
     extensions = nix-vscode-extensions.extensions.${system};
 
@@ -71,19 +67,19 @@
       libvirtiolo = pkgs.libvirtiolo;
       libvirtiolo-dev = pkgs.libvirtiolo.dev;
 
-      virtio-lo = myLinuxPackages.virtio-lo;
-      virtio-lo-dev = myLinuxPackages.virtio-lo.dev;
+      virtio-lo = pkgs.linuxPackages.virtio-lo;
+      virtio-lo-dev = pkgs.linuxPackages.virtio-lo.dev;
 
-      vduse = myLinuxPackages.vduse;
+      vduse = pkgs.linuxPackages.vduse;
     };
 
     devShells.${system} = rec {
       virtio-lo = with pkgs;
         mkShell {
-          packages = [vscode nixgl.nixGLMesa nixos.vm myLinuxPackages.virtio-lo.dev];
-          inputsFrom = (builtins.attrValues self.packages.${system}) ++ myLinuxPackages.kernel.moduleBuildDependencies;
+          packages = [vscode nixgl.nixGLMesa nixos.vm linuxPackages.virtio-lo.dev];
+          inputsFrom = (builtins.attrValues self.packages.${system}) ++ linuxPackages.kernel.moduleBuildDependencies;
           shellHook = ''
-            export VIRTIO_LOOPBACK_DRIVER_KERNEL="${myLinuxPackages.kernel.dev}/lib/modules/${myLinuxPackages.kernel.modDirVersion}/build"
+            export VIRTIO_LOOPBACK_DRIVER_KERNEL="${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/build"
             echo "VIRTIO_LOOPBACK_DRIVER_KERNEL=''$VIRTIO_LOOPBACK_DRIVER_KERNEL"
             echo
             echo "libvirtiolo: ${libvirtiolo}"
@@ -91,11 +87,11 @@
             echo
             echo "\"includePath\": ["
             echo "  \"''${workspaceFolder}/**\"",
-            echo "  \"${myLinuxPackages.virtio-lo.dev}/include\","
-            echo "  \"${myLinuxPackages.kernel.dev}/lib/modules/${myLinuxPackages.kernel.modDirVersion}/build/source/include\","
-            echo "  \"${myLinuxPackages.kernel.dev}/lib/modules/${myLinuxPackages.kernel.modDirVersion}/source/arch/x86/include\","
-            echo "  \"${myLinuxPackages.kernel.dev}/lib/modules/${myLinuxPackages.kernel.modDirVersion}/build/include\","
-            echo "  \"${myLinuxPackages.kernel.dev}/lib/modules/${myLinuxPackages.kernel.modDirVersion}/build/arch/x86/include/generaged\""
+            echo "  \"${linuxPackages.virtio-lo.dev}/include\","
+            echo "  \"${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/build/source/include\","
+            echo "  \"${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/source/arch/x86/include\","
+            echo "  \"${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/build/include\","
+            echo "  \"${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/build/arch/x86/include/generaged\""
             echo "],"
             echo '"defines": [ "__KERNEL__", "KBUILD_MODNAME=\"virtio-lo\"", "MODULE" ],'
           '';
