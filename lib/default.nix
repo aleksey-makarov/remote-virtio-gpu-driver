@@ -1,6 +1,7 @@
 {
   stdenv,
   lib,
+  linuxHeaders,
   linuxPackages,
   cmake,
   pkg-config,
@@ -19,7 +20,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     cmake
     pkg-config
-    linuxPackages.kernel.dev
+    linuxHeaders
     linuxPackages.virtio-lo.dev
     libnl.dev
   ];
