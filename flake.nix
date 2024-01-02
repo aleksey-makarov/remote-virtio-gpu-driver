@@ -95,5 +95,14 @@
         };
       default = virtio-lo;
     };
+
+    apps.${system} = rec {
+      codium = {
+        type = "app";
+        program = "${vscode}/bin/codium";
+      };
+      default = codium;
+    };
+
   };
 }
