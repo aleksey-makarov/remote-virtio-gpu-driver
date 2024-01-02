@@ -5,7 +5,6 @@
   linuxPackages,
   cmake,
   pkg-config,
-  libnl,
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
@@ -22,7 +21,6 @@ stdenv.mkDerivation rec {
     pkg-config
     linuxHeaders
     linuxPackages.virtio-lo.dev
-    libnl.dev
   ];
 
   meta = with lib; {

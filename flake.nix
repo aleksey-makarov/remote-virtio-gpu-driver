@@ -76,14 +76,11 @@
     devShells.${system} = rec {
       virtio-lo = with pkgs;
         mkShell {
-          packages = [vscode nixgl.nixGLMesa nixos.vm linuxPackages.virtio-lo.dev];
-          inputsFrom = (builtins.attrValues self.packages.${system}) ++ linuxPackages.kernel.moduleBuildDependencies;
+          packages = [vscode linuxPackages.virtio-lo.dev];
+          inputsFrom = [pkgs.libvirtiolo] ++ linuxPackages.kernel.moduleBuildDependencies;
           shellHook = ''
             export VIRTIO_LOOPBACK_DRIVER_KERNEL="${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/build"
             echo "VIRTIO_LOOPBACK_DRIVER_KERNEL=''$VIRTIO_LOOPBACK_DRIVER_KERNEL"
-            echo
-            echo "libvirtiolo: ${libvirtiolo}"
-            echo "libvirtiolo.dev: ${libvirtiolo.dev}"
             echo
             echo "\"includePath\": ["
             echo "  \"''${workspaceFolder}/**\"",
