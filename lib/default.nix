@@ -5,6 +5,9 @@
   linuxPackages,
   cmake,
   pkg-config,
+  gtk3,
+  epoxy,
+  glm,
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
@@ -21,6 +24,9 @@ stdenv.mkDerivation rec {
     pkg-config
     linuxHeaders
     linuxPackages.virtio-lo.dev
+    gtk3
+    epoxy
+    glm
   ];
 
   meta = with lib; {

@@ -7,8 +7,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS       "${CMAKE_C_FLAGS} -Wall -Wextra")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 
-# include(FindPkgConfig)
-# pkg_check_modules(extlibs REQUIRED libnl-3.0 libnl-genl-3.0)
+include(FindPkgConfig)
+pkg_check_modules(extlibs REQUIRED gtk+-3.0 glm epoxy)
 
 #
 # libvirtiolo
@@ -42,10 +42,18 @@ add_executable(test_vduse test_vduse.c)
 target_link_libraries(test_vduse PRIVATE misc)
 
 #
-# test_vduse
+# test_vduse_gpu
 #
 add_executable(test_vduse_gpu test_vduse_gpu.c)
 target_link_libraries(test_vduse_gpu PRIVATE misc)
+
+#
+# gtk_test
+#
+
+add_executable(gtk_test gtk_test.c es2gears.c)
+target_include_directories(gtk_test PRIVATE ${extlibs_INCLUDE_DIRS})
+target_link_libraries(gtk_test PRIVATE ${extlibs_LIBRARIES} m)
 
 #
 # install
@@ -54,6 +62,6 @@ include(GNUInstallDirs)
 
 configure_file(libvirtiolo.pc.in libvirtiolo.pc @ONLY)
 
-install(TARGETS virtiolo test_lo test_vduse test_vduse_gpu)
+install(TARGETS virtiolo test_lo test_vduse test_vduse_gpu gtk_test)
 install(FILES libvirtiolo.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libvirtiolo.pc DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)

@@ -27,7 +27,7 @@
   }: let
     system = "x86_64-linux";
 
-    overlay = _: super: {
+    overlay = self: super: {
       linuxPackages = super.linuxPackages_6_6;
       linuxKernel =
         super.linuxKernel
@@ -38,6 +38,11 @@
           }));
         };
       libvirtiolo = super.callPackage ./lib {};
+
+      libvirtiolo-debug = self.libvirtiolo.overrideAttrs (_: _: {
+        cmakeBuildType = "Debug";
+        separateDebugInfo = true;
+      });
     };
 
     pkgs = (nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay;
@@ -56,31 +61,42 @@
     };
 
     nixos = pkgs.nixos (import ./configuration.nix);
+
+    start_gtk_test_sh = pkgs.writeShellScript "start_gtk_test.sh" ''
+      export LOCALE_ARCHIVE="${pkgs.glibcLocales}/lib/locale/locale-archive";
+      export GDK_GL=gles
+      exec ${pkgs.nixgl.nixGLMesa}/bin/nixGLMesa ${pkgs.libvirtiolo-debug}/bin/gtk_test
+    '';
   in {
     overlays.${system} = {
       default = overlay;
     };
 
     packages.${system} = rec {
-      default = libvirtiolo;
-
       libvirtiolo = pkgs.libvirtiolo;
       libvirtiolo-dev = pkgs.libvirtiolo.dev;
+
+      libvirtiolo-debug = pkgs.libvirtiolo-debug;
 
       virtio-lo = pkgs.linuxPackages.virtio-lo;
       virtio-lo-dev = pkgs.linuxPackages.virtio-lo.dev;
 
       vduse = pkgs.linuxPackages.vduse;
+
+      default = libvirtiolo;
     };
 
     devShells.${system} = rec {
       virtio-lo = with pkgs;
         mkShell {
-          packages = [vscode linuxPackages.virtio-lo.dev];
-          inputsFrom = [pkgs.libvirtiolo] ++ linuxPackages.kernel.moduleBuildDependencies;
+          packages = [vscode linuxPackages.virtio-lo.dev pkgs.nixgl.nixGLMesa];
+          inputsFrom = [pkgs.libvirtiolo-debug] ++ linuxPackages.kernel.moduleBuildDependencies;
           shellHook = ''
             export VIRTIO_LOOPBACK_DRIVER_KERNEL="${linuxPackages.kernel.dev}/lib/modules/${linuxPackages.kernel.modDirVersion}/build"
             echo "VIRTIO_LOOPBACK_DRIVER_KERNEL=''$VIRTIO_LOOPBACK_DRIVER_KERNEL"
+            echo
+            echo "gtk: ${pkgs.gtk3.dev}"
+            echo "nixGL: ${pkgs.nixgl.nixGLMesa}"
             echo
             echo "\"includePath\": ["
             echo "  \"''${workspaceFolder}/**\"",
@@ -101,8 +117,11 @@
         type = "app";
         program = "${vscode}/bin/codium";
       };
+      gtk-test = {
+        type = "app";
+        program = "${start_gtk_test_sh}";
+      };
       default = codium;
     };
-
   };
 }

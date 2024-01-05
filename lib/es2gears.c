@@ -50,10 +50,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <libuhmigl.h>
-
-#define LOG_TAG "uhmitest"
-#include <pr.h>
+#include <epoxy/gl.h>
 
 #define STRIPS_PER_TOOTH 7
 #define VERTICES_PER_TOOTH 46
@@ -658,7 +655,7 @@ struct es2gears_state *es2gears_init(void)
 {
    GLuint v, f, program;
    const char *p;
-   char msg[512];
+   // char msg[512];
 
    struct es2gears_state *ret;
 
@@ -678,16 +675,16 @@ struct es2gears_state *es2gears_init(void)
    v = glCreateShader(GL_VERTEX_SHADER);
    glShaderSource(v, 1, &p, NULL);
    glCompileShader(v);
-   glGetShaderInfoLog(v, sizeof msg, NULL, msg);
-   printf("vertex shader info: %s\n", msg);
+   // glGetShaderInfoLog(v, sizeof msg, NULL, msg);
+   // printf("vertex shader info: %s\n", msg);
 
    /* Compile the fragment shader */
    p = fragment_shader;
    f = glCreateShader(GL_FRAGMENT_SHADER);
    glShaderSource(f, 1, &p, NULL);
    glCompileShader(f);
-   glGetShaderInfoLog(f, sizeof msg, NULL, msg);
-   printf("fragment shader info: %s\n", msg);
+   // glGetShaderInfoLog(f, sizeof msg, NULL, msg);
+   // printf("fragment shader info: %s\n", msg);
 
    /* Create and link the shader program */
    program = glCreateProgram();
@@ -697,8 +694,8 @@ struct es2gears_state *es2gears_init(void)
    glBindAttribLocation(program, 1, "normal");
 
    glLinkProgram(program);
-   glGetProgramInfoLog(program, sizeof msg, NULL, msg);
-   printf("info: %s\n", msg);
+   // glGetProgramInfoLog(program, sizeof msg, NULL, msg);
+   // printf("info: %s\n", msg);
 
    /* Enable the shaders */
    glUseProgram(program);
