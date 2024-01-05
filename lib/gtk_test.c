@@ -47,13 +47,12 @@ MessageCallback(UNUSED GLenum source,
 	}
 #undef _X
 
-	fprintf(stderr, "* GL %s: %s\n", type_string, message);
+	fprintf(stderr, "%c GL %s: %s\n", type == GL_DEBUG_TYPE_ERROR ? '*' : '-', type_string, message);
 }
 
 static void realize(GtkWidget *widget)
 {
 	assert(!gears);
-	trace("BEGIN realize()");
 
 	gtk_gl_area_make_current(GTK_GL_AREA(widget));
 	GError *gerr = gtk_gl_area_get_error(GTK_GL_AREA(widget));
@@ -93,7 +92,6 @@ static void realize(GtkWidget *widget)
 static void unrealize(GtkWidget *widget)
 {
 	assert(gears);
-	trace("");
 
 	gtk_gl_area_make_current(GTK_GL_AREA(widget));
 	GError *err = gtk_gl_area_get_error(GTK_GL_AREA(widget));
@@ -154,34 +152,27 @@ static gboolean on_key_press(UNUSED GtkWidget *widget, GdkEventKey *event, UNUSE
 	switch (event->keyval)
 	{
 	case GDK_KEY_Up:
-		trace("Up arrow key pressed");
 		es2gears_special(gears, SPECIAL_UP);
 		break;
 	case GDK_KEY_Down:
-		trace("Down arrow key pressed");
 		es2gears_special(gears, SPECIAL_DOWN);
 		break;
 	case GDK_KEY_Left:
-		trace("Left arrow key pressed");
 		es2gears_special(gears, SPECIAL_LEFT);
 		break;
 	case GDK_KEY_Right:
-		trace("Right arrow key pressed");
 		es2gears_special(gears, SPECIAL_RIGHT);
 		break;
 	default:
-		trace("other key");
-		return FALSE; // если нажата другая клавиша, мы не обрабатываем событие
+		return FALSE;
 	}
 
-	return TRUE; // мы обработали событие
+	return TRUE;
 }
 
 int main(int argc, char **argv)
 {
 	GtkWidget *window, *box;
-
-	trace("");
 
 	/* initialize gtk */
 	gtk_init(&argc, &argv);
