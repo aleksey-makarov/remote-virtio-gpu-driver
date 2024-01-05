@@ -11,6 +11,7 @@
 #include "es2gears.h"
 #include "timeval.h"
 #include "virtio_thread.h"
+#include "gettid.h"
 
 #define UNUSED __attribute__((unused))
 
@@ -50,6 +51,9 @@ MessageCallback(UNUSED GLenum source,
 
 	fprintf(stderr, "%c GL %s: %s\n", type == GL_DEBUG_TYPE_ERROR ? '*' : '-', type_string, message);
 }
+
+static pthread_mutex_t req_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+static STAILQ_HEAD(, virtio_thread_request) req_queue = STAILQ_HEAD_INITIALIZER(req_queue);
 
 static void realize(GtkWidget *widget)
 {
@@ -109,7 +113,28 @@ static void unrealize(GtkWidget *widget)
 
 static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 {
+	int err;
 	assert(gears);
+
+	err = pthread_mutex_lock(&req_queue_mutex);
+	if (err) {
+		error("pthread_mutex_lock(): %s", strerror(err));
+		exit(EXIT_FAILURE);
+	}
+
+	while(!STAILQ_EMPTY(&req_queue)) {
+		struct virtio_thread_request *req = STAILQ_FIRST(&req_queue);
+		STAILQ_REMOVE_HEAD(&req_queue, queue_entry);
+
+		trace("(3) %d work on %d", req->serial, gettid());
+		virtio_thread_request_done(req);
+	}
+
+	err = pthread_mutex_unlock(&req_queue_mutex);
+	if (err) {
+		error("pthread_mutex_lock(): %s", strerror(err));
+		exit(EXIT_FAILURE);
+	}
 
 	GError *gerr = gtk_gl_area_get_error(area);
 	if (gerr) {
@@ -120,7 +145,7 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 	struct timeval now;
 	unsigned long int dt_ms;
 
-	int err = gettimeofday(&now, NULL);
+	err = gettimeofday(&now, NULL);
 	if (err < 0) {
 		error_errno("gettimeofday()");
 		return FALSE;
@@ -173,9 +198,37 @@ static gboolean on_key_press(UNUSED GtkWidget *widget, GdkEventKey *event, UNUSE
 	return TRUE;
 }
 
+// called from the helper thread
+void virtio_thread_new_request(struct virtio_thread_request *req)
+{
+	int err;
+	trace("%d", gettid());
+
+	err = pthread_mutex_lock(&req_queue_mutex);
+	if (err) {
+		error("pthread_mutex_lock(): %s", strerror(err));
+		exit(EXIT_FAILURE);
+	}
+
+	trace("(2) %d on %d", req->serial, gettid());
+	STAILQ_INSERT_TAIL(&req_queue, req, queue_entry);
+
+	err = pthread_mutex_unlock(&req_queue_mutex);
+	if (err) {
+		error("pthread_mutex_lock(): %s", strerror(err));
+		exit(EXIT_FAILURE);
+	}
+
+	// FIXME: invoke gtk_gl_area_queue_render(area); from the main thread;
+	// g_main_context_invoke(NULL, new_request, req);
+	// gtk_gl_area_queue_render(area);
+}
+
 int main(int argc, char **argv)
 {
 	GtkWidget *window, *box;
+
+	trace("main: %d", gettid());
 
 	int err = virtio_thread_start();
 	if (err) {
