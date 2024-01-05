@@ -186,9 +186,7 @@ int main(int argc, char **argv)
 	/* Quit form main if got delete event */
 	g_signal_connect(G_OBJECT(window), "delete-event", G_CALLBACK(gtk_main_quit), NULL);
 
-
-	gtk_gl_area_set_use_es(GTK_GL_AREA(gl_area), true);
-	gtk_gl_area_set_required_version(GTK_GL_AREA(gl_area), 2, 0);
+	gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(gl_area), true);
 
 	gtk_widget_show_all(GTK_WIDGET(window));
 	gtk_main();
