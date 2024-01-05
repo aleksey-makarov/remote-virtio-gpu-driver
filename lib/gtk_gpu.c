@@ -10,6 +10,7 @@
 #include "error.h"
 #include "es2gears.h"
 #include "timeval.h"
+#include "virtio_thread.h"
 
 #define UNUSED __attribute__((unused))
 
@@ -176,6 +177,12 @@ int main(int argc, char **argv)
 {
 	GtkWidget *window, *box;
 
+	int err = virtio_thread_start();
+	if (err) {
+		error("virtio_thread_start()");
+		exit(EXIT_FAILURE);
+	}
+
 	/* initialize gtk */
 	gtk_init(&argc, &argv);
 
@@ -212,7 +219,10 @@ int main(int argc, char **argv)
 	gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(gl_area), true);
 
 	gtk_widget_show_all(GTK_WIDGET(window));
+
 	gtk_main();
+
+	virtio_thread_stop();
 
 	exit(EXIT_SUCCESS);
 }
