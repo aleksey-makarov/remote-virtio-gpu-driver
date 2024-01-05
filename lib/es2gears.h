@@ -17,7 +17,8 @@ struct es2gears_state;
 void es2gears_idle(struct es2gears_state * state, unsigned long int elapsed_time_ms);
 void es2gears_reshape(struct es2gears_state * state, int width, int height);
 void es2gears_draw(struct es2gears_state *state);
-// void es2gears_special(int special);
+enum special { SPECIAL_LEFT, SPECIAL_RIGHT, SPECIAL_UP, SPECIAL_DOWN, };
+void es2gears_special(struct es2gears_state * state, enum special special);
 struct es2gears_state *es2gears_init(void);
 void es2gears_done(struct es2gears_state *state);
 

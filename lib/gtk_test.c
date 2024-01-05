@@ -144,11 +144,38 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 	return TRUE;
 }
 
-// static void
-// on_axis_value_change (void)
-// {
-//   gtk_widget_queue_draw (gl_area);
-// }
+static void on_resize(UNUSED GtkGLArea *area, int width, int height, UNUSED gpointer user_data)
+{
+	es2gears_reshape(gears, width, height);
+}
+
+static gboolean on_key_press(UNUSED GtkWidget *widget, GdkEventKey *event, UNUSED gpointer user_data)
+{
+	switch (event->keyval)
+	{
+	case GDK_KEY_Up:
+		trace("Up arrow key pressed");
+		es2gears_special(gears, SPECIAL_UP);
+		break;
+	case GDK_KEY_Down:
+		trace("Down arrow key pressed");
+		es2gears_special(gears, SPECIAL_DOWN);
+		break;
+	case GDK_KEY_Left:
+		trace("Left arrow key pressed");
+		es2gears_special(gears, SPECIAL_LEFT);
+		break;
+	case GDK_KEY_Right:
+		trace("Right arrow key pressed");
+		es2gears_special(gears, SPECIAL_RIGHT);
+		break;
+	default:
+		trace("other key");
+		return FALSE; // если нажата другая клавиша, мы не обрабатываем событие
+	}
+
+	return TRUE; // мы обработали событие
+}
 
 int main(int argc, char **argv)
 {
@@ -182,6 +209,9 @@ int main(int argc, char **argv)
 
 	/* The main "draw" call for GtkGLArea */
 	g_signal_connect (gl_area, "render", G_CALLBACK (render), NULL);
+
+	g_signal_connect(gl_area, "resize", G_CALLBACK(on_resize), NULL);
+	g_signal_connect(G_OBJECT(window), "key-press-event", G_CALLBACK(on_key_press), NULL);
 
 	/* Quit form main if got delete event */
 	g_signal_connect(G_OBJECT(window), "delete-event", G_CALLBACK(gtk_main_quit), NULL);

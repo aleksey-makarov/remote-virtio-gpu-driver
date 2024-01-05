@@ -555,31 +555,28 @@ void es2gears_reshape(struct es2gears_state * state, int width, int height)
    glViewport(0, 0, (GLint) width, (GLint) height);
 }
 
-#if 0
 /**
  * Handles special eglut events.
  *
  * @param special the event to handle.
  */
-void es2gears_special(int special)
+void es2gears_special(struct es2gears_state * state, enum special special)
 {
    switch (special) {
-      case EGLUT_KEY_LEFT:
-         view_rot[1] += 5.0;
+      case SPECIAL_LEFT:
+         state->view_rot[1] += 5.0;
          break;
-      case EGLUT_KEY_RIGHT:
-         view_rot[1] -= 5.0;
+      case SPECIAL_RIGHT:
+         state->view_rot[1] -= 5.0;
          break;
-      case EGLUT_KEY_UP:
-         view_rot[0] += 5.0;
+      case SPECIAL_UP:
+         state->view_rot[0] += 5.0;
          break;
-      case EGLUT_KEY_DOWN:
-         view_rot[0] -= 5.0;
+      case SPECIAL_DOWN:
+         state->view_rot[0] -= 5.0;
          break;
    }
 }
-
-#endif
 
 void es2gears_idle(struct es2gears_state * state, unsigned long int elapsed_time_ms)
 {
