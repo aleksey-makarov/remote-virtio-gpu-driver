@@ -49,8 +49,6 @@ static void *virtio_thread(void *ptr)
 	trace("virtio_thread: %d", gettid());
 
 	while(!done) {
-		sleep(3);
-
 		static unsigned int serial = 0;
 
 		req = malloc(sizeof(*req));
@@ -83,6 +81,8 @@ static void *virtio_thread(void *ptr)
 			error("pthread_mutex_lock(): %s", strerror(err));
 			exit(EXIT_FAILURE);
 		}
+
+		sleep(3);
 	}
 
 	assert(STAILQ_EMPTY(&req_queue));

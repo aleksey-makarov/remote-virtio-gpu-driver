@@ -3,6 +3,7 @@
 #include <math.h>
 #include <assert.h>
 #include <sys/time.h>
+#include <sys/eventfd.h>
 
 #include <epoxy/gl.h>
 #include <gtk/gtk.h>
@@ -15,13 +16,14 @@
 
 #define UNUSED __attribute__((unused))
 
-unsigned int WIDTH = 800;
-unsigned int HEIGHT = 600;
+static const unsigned int WIDTH = 800;
+static const unsigned int HEIGHT = 600;
 
 static GtkWidget *gl_area = NULL;
 
 struct timeval start;
 static struct es2gears_state *gears;
+static int efd;
 
 void GLAPIENTRY
 MessageCallback(UNUSED GLenum source,
@@ -113,35 +115,9 @@ static void unrealize(GtkWidget *widget)
 
 static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 {
-	int err;
 	assert(gears);
 
-	err = pthread_mutex_lock(&req_queue_mutex);
-	if (err) {
-		error("pthread_mutex_lock(): %s", strerror(err));
-		exit(EXIT_FAILURE);
-	}
-
-	while(!STAILQ_EMPTY(&req_queue)) {
-		struct virtio_thread_request *req = STAILQ_FIRST(&req_queue);
-		STAILQ_REMOVE_HEAD(&req_queue, queue_entry);
-
-		trace("(3) %d work on %d", req->serial, gettid());
-		virtio_thread_request_done(req);
-	}
-
-	err = pthread_mutex_unlock(&req_queue_mutex);
-	if (err) {
-		error("pthread_mutex_lock(): %s", strerror(err));
-		exit(EXIT_FAILURE);
-	}
-
-	GError *gerr = gtk_gl_area_get_error(area);
-	if (gerr) {
-		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
-		return FALSE;
-	}
-
+	int err;
 	struct timeval now;
 	unsigned long int dt_ms;
 
@@ -156,14 +132,14 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 
 	dt_ms = timeval_to_ms(&dt);
 
-	gerr = gtk_gl_area_get_error(area);
+	es2gears_idle(gears, dt_ms);
+	es2gears_draw(gears);
+
+	GError *gerr = gtk_gl_area_get_error(area);
 	if (gerr) {
 		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
 		return FALSE;
 	}
-
-	es2gears_idle(gears, dt_ms);
-	es2gears_draw(gears);
 
 	gtk_gl_area_queue_render(area);
 
@@ -219,20 +195,77 @@ void virtio_thread_new_request(struct virtio_thread_request *req)
 		exit(EXIT_FAILURE);
 	}
 
-	// FIXME: invoke gtk_gl_area_queue_render(area); from the main thread;
-	// g_main_context_invoke(NULL, new_request, req);
-	// gtk_gl_area_queue_render(area);
+	eventfd_write(efd, 1);
+}
+
+gboolean on_eventfd_ready(
+	UNUSED GIOChannel *channel,
+	UNUSED GIOCondition condition,
+	UNUSED gpointer data)
+{
+	eventfd_t value;
+	int err;
+
+	eventfd_read(efd, &value);
+
+	trace("eventfd_read(): %lu", value);
+
+	while (1) {
+
+		err = pthread_mutex_lock(&req_queue_mutex);
+		if (err) {
+			error("pthread_mutex_lock(): %s", strerror(err));
+			exit(EXIT_FAILURE);
+		}
+
+		if(STAILQ_EMPTY(&req_queue)) {
+			err = pthread_mutex_unlock(&req_queue_mutex);
+			if (err) {
+				error("pthread_mutex_lock(): %s", strerror(err));
+				exit(EXIT_FAILURE);
+			}
+			break;
+		}
+
+		struct virtio_thread_request *req = STAILQ_FIRST(&req_queue);
+		STAILQ_REMOVE_HEAD(&req_queue, queue_entry);
+
+		err = pthread_mutex_unlock(&req_queue_mutex);
+		if (err) {
+			error("pthread_mutex_lock(): %s", strerror(err));
+			exit(EXIT_FAILURE);
+		}
+
+		trace("(3) %d work on %d", req->serial, gettid());
+		virtio_thread_request_done(req);
+	}
+
+	gtk_gl_area_queue_render(GTK_GL_AREA(gl_area));
+
+	return TRUE;
 }
 
 int main(int argc, char **argv)
 {
 	GtkWidget *window, *box;
+	GIOChannel *channel;
+	guint source_id;
 
 	trace("main: %d", gettid());
+
+	efd = eventfd(0, EFD_NONBLOCK);
+	if (efd < 0) {
+		error_errno("eventfd()");
+		exit(EXIT_FAILURE);
+	}
+
+	channel = g_io_channel_unix_new(efd);
+	source_id = g_io_add_watch(channel, G_IO_IN, on_eventfd_ready, NULL);
 
 	int err = virtio_thread_start();
 	if (err) {
 		error("virtio_thread_start()");
+		// FIXME
 		exit(EXIT_FAILURE);
 	}
 
@@ -276,6 +309,10 @@ int main(int argc, char **argv)
 	gtk_main();
 
 	virtio_thread_stop();
+
+	g_source_remove(source_id);
+	g_io_channel_unref(channel);
+	close(efd);
 
 	exit(EXIT_SUCCESS);
 }
