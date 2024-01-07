@@ -29,7 +29,7 @@ with lib; {
           ];
         }))
       ];
-      kernelModules = ["vduse" "virtio-test"];
+      kernelModules = ["vduse" "virtio-test" "virtio-lo"];
 
       # kernelParams = [ "video=1920x1080" ];
       # kernelParams = [ "drm.debug=0x1ff" ];
@@ -83,6 +83,20 @@ with lib; {
     services.openssh.settings.PermitRootLogin = "yes";
     # services.openssh.passwordAuthentication = true;
 
+    # services.xserver = {
+    #   enable = true;
+    #   displayManager = {
+    #     gdm.enable = true;
+    #     # FIXME: Autologin into root account does not work
+    #     # autoLogin = {
+    #     #   enable = true;
+    #     #   # user = "guest";
+    #     #   user = "root";
+    #     # };
+    #   };
+    #   desktopManager.gnome.enable = true;
+    # };
+
     fonts.packages = with pkgs; [
       noto-fonts
     ];
@@ -124,6 +138,16 @@ with lib; {
     users.users.root = {
       password = "";
       openssh.authorizedKeys.keys = ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDYiMGe5zxNUAbYnJMRWrVfQrPxbPH77bpY3JvRTd2xM/Pdm+o6zbPYToJcDZWBUDO3XuQFCtrLuEGM5IBKlrf7JCsk/yeoCS8tcFjEJxMTE1FQVuwxOlrbNSDF2aeA9XpIPg2mL2JUBj6YOF141GWXNra1X/s6bOfAwmxgZw/RnPY7+6ZFFwTGgWniurc3oeCOdT09aX5RDIEUcnni8ye7fLNQJHv3egz62ORVswJ7CuLtVcdK6gMOVCeBC0DFPUkt0SXLUQUwU5HpWKB1Xx9EKWPmdlZk+0pXz14DgiGfseCbRDQGLqvHE7WxT/MxSHzLqicAlrXMAAdz3EsA2D1dTetb0d20PvViYkDYIa/phzdueM8RbzGaItPKffsMZx9aUMALnbEKeyNPUzfyLohrqT6yflZ1N3o6EWEGXTBpAnHEjYBgdWR4tcKyfBu6sjWzEYM0jnIXnbRPjdoPdg+JR4+S4MzoPDprB86Nr722Jg03xa+sQudS9IBgY8YvYwM= amakarov@NB-100862.open-synergy.com"];
+    };
+
+    users.users.guest = {
+      isNormalUser = true;
+      home = "/home/guest";
+      description = "Guest";
+      # group = "guest";
+      extraGroups = ["wheel"];
+      uid = 1001;
+      password = "";
     };
   };
 }
