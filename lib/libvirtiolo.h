@@ -27,6 +27,10 @@ struct vlo_buf {
 	struct iovec io[];
 };
 
+/*
+ * NB: in qinfo should be filled only .size
+ * Other fields are initialized by this function
+ */
 struct vlo *vlo_init(
 	unsigned int device_id,
 	unsigned int vendor_id,
