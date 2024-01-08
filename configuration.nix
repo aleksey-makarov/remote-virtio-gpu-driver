@@ -130,7 +130,7 @@ with lib; {
 
       ffmpeg_6-full
 
-      libvirtiolo
+      libvirtiolo-debug
     ];
 
     users.mutableUsers = false;
