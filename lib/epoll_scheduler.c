@@ -44,14 +44,14 @@ static int es_resize(struct es *es)
 {
 	unsigned int capacity_new = es->data_capacity * 2;
 
-	struct es_thread **data_new = reallocarray(es->data, capacity_new, sizeof(struct es_thread *));
+	struct es_thread **data_new = reallocarray(es->data, capacity_new, sizeof(*data_new));
 	if (!data_new) {
 		error_errno("reallocarray() data");
 		return -1;
 	}
 	es->data = data_new;
 
-	struct epoll_event *events_new = reallocarray(es->events, capacity_new, sizeof(struct epoll_event));
+	struct epoll_event *events_new = reallocarray(es->events, capacity_new, sizeof(*events_new));
 	if (!events_new) {
 		error_errno("reallocarray() events");
 		return -1;
@@ -74,7 +74,7 @@ static int _es_add(struct es *es, struct es_thread *th)
 	th->private.data.u32 = es->data_len;
 	th->private.events = 0;
 
-	trace("epoll_ctl(ADD) n=%u, epoll_fd=%d, fd=%d", es->data_len, es->epoll_fd, th->fd);
+	trace("epoll_ctl(ADD) n=%u, epoll_fd=%d, name=\"%s\", fd=%d", es->data_len, es->epoll_fd, th->name, th->fd);
 	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
 	if (ret < 0) {
 		error_errno("epoll_ctl(ADD \"%s\") n=%u", th->name, es->data_len);
@@ -101,7 +101,7 @@ struct es *es_init(struct es_thread *thread, ...)
 	for (threads = 1; va_arg(va1, void *); threads++)
 		;
 
-	struct es *es = malloc(sizeof(struct es));
+	struct es *es = malloc(sizeof(*es));
 	if (!es) {
 		error("malloc() es");
 		goto error_va_end;
@@ -119,7 +119,7 @@ struct es *es_init(struct es_thread *thread, ...)
 	es->data_len = 0;
 	es->data_capacity = capacity;
 
-	es->data = calloc(capacity, sizeof(struct es_data *));
+	es->data = calloc(capacity, sizeof(*es->data));
 	if (!es->data) {
 		error("calloc() data");
 		goto error_close;
@@ -140,7 +140,7 @@ struct es *es_init(struct es_thread *thread, ...)
 		}
 	}
 
-	es->events = calloc(capacity, sizeof(struct epoll_event));
+	es->events = calloc(capacity, sizeof(*es->events));
 	if (!es->events) {
 		error("calloc() events");
 		goto error_epoll_ctl_del;
@@ -251,11 +251,13 @@ int es_schedule(struct es *es)
 			}
 		}
 
-		ret = epoll_wait(es->epoll_fd, es->events, es->data_capacity, ready ? 0 : -1);
+		// trace("epoll_wait() fd=%d, data_len=%u, timeout=%d...", es->epoll_fd, es->data_len, ready ? 0 : -1);
+		ret = epoll_wait(es->epoll_fd, es->events, es->data_len, ready ? 0 : -1);
+		// trace("epoll_wait() ... ret=%d", ret);
 		if (ret < 0) {
 			error_errno("epoll_wait()");
 			goto done;
-		} else if ( (!ready && ret == 0) || (unsigned int)ret >= es->data_capacity) {
+		} else if ( (!ready && ret == 0) || (unsigned int)ret > es->data_len) {
 			error("epoll_wait() ???");
 			ret = -1;
 			goto done;
