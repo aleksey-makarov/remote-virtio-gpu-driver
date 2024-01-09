@@ -13,6 +13,8 @@
 #include "timeval.h"
 #include "virtio_thread.h"
 #include "gettid.h"
+#include "libvirtiolo.h"
+#include "virtio_request.h"
 
 #define UNUSED __attribute__((unused))
 
@@ -60,7 +62,7 @@ static STAILQ_HEAD(, virtio_thread_request) req_queue = STAILQ_HEAD_INITIALIZER(
 static void realize(GtkWidget *widget)
 {
 	assert(!gears);
-	trace("BEGIN realize()");
+	trace("");
 
 	gtk_gl_area_make_current(GTK_GL_AREA(widget));
 	GError *gerr = gtk_gl_area_get_error(GTK_GL_AREA(widget));
@@ -117,9 +119,18 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 {
 	assert(gears);
 
-	int err;
-	struct timeval now;
 	unsigned long int dt_ms;
+	struct timeval dt;
+	struct timeval now;
+	GError *gerr;
+	int err;
+
+	gtk_gl_area_make_current(area);
+	gerr = gtk_gl_area_get_error(area);
+	if (gerr) {
+		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
+		return FALSE;
+	}
 
 	err = gettimeofday(&now, NULL);
 	if (err < 0) {
@@ -127,7 +138,6 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 		return FALSE;
 	}
 
-	struct timeval dt;
 	timeval_subtract(&dt, &now, &start);
 
 	dt_ms = timeval_to_ms(&dt);
@@ -135,7 +145,7 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 	es2gears_idle(gears, dt_ms);
 	es2gears_draw(gears);
 
-	GError *gerr = gtk_gl_area_get_error(area);
+	gerr = gtk_gl_area_get_error(area);
 	if (gerr) {
 		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
 		return FALSE;
@@ -177,28 +187,18 @@ static gboolean on_key_press(UNUSED GtkWidget *widget, GdkEventKey *event, UNUSE
 // called from the helper thread
 void virtio_thread_new_request(struct virtio_thread_request *req)
 {
-	int err;
-	trace("%d", gettid());
-
-	err = pthread_mutex_lock(&req_queue_mutex);
-	if (err) {
-		error("pthread_mutex_lock(): %s", strerror(err));
-		exit(EXIT_FAILURE);
-	}
-
 	trace("(2) %d on %d", req->serial, gettid());
+
+	pthread_mutex_lock(&req_queue_mutex);
 	STAILQ_INSERT_TAIL(&req_queue, req, queue_entry);
+	pthread_mutex_unlock(&req_queue_mutex);
 
-	err = pthread_mutex_unlock(&req_queue_mutex);
-	if (err) {
-		error("pthread_mutex_lock(): %s", strerror(err));
-		exit(EXIT_FAILURE);
-	}
-
-	eventfd_write(efd, 1);
+	int err = eventfd_write(efd, 1);
+	if (err < 0)
+		error_errno("eventfd_write()");
 }
 
-gboolean on_eventfd_ready(
+static gboolean on_eventfd_ready(
 	UNUSED GIOChannel *channel,
 	UNUSED GIOCondition condition,
 	UNUSED gpointer data)
@@ -206,37 +206,23 @@ gboolean on_eventfd_ready(
 	eventfd_t value;
 	int err;
 
-	eventfd_read(efd, &value);
+	err = eventfd_read(efd, &value);
+	if (err < 0)
+		error_errno("eventfd_read()");
 
-	trace("eventfd_read(): %lu", value);
+	static STAILQ_HEAD(, virtio_thread_request) tmp_queue = STAILQ_HEAD_INITIALIZER(tmp_queue);
 
-	while (1) {
+	pthread_mutex_lock(&req_queue_mutex);
+	STAILQ_CONCAT(&tmp_queue, &req_queue);
+	pthread_mutex_unlock(&req_queue_mutex);
 
-		err = pthread_mutex_lock(&req_queue_mutex);
-		if (err) {
-			error("pthread_mutex_lock(): %s", strerror(err));
-			exit(EXIT_FAILURE);
-		}
-
-		if(STAILQ_EMPTY(&req_queue)) {
-			err = pthread_mutex_unlock(&req_queue_mutex);
-			if (err) {
-				error("pthread_mutex_lock(): %s", strerror(err));
-				exit(EXIT_FAILURE);
-			}
-			break;
-		}
-
-		struct virtio_thread_request *req = STAILQ_FIRST(&req_queue);
-		STAILQ_REMOVE_HEAD(&req_queue, queue_entry);
-
-		err = pthread_mutex_unlock(&req_queue_mutex);
-		if (err) {
-			error("pthread_mutex_lock(): %s", strerror(err));
-			exit(EXIT_FAILURE);
-		}
+	while(!STAILQ_EMPTY(&tmp_queue)) {
+		struct virtio_thread_request *req = STAILQ_FIRST(&tmp_queue);
+		STAILQ_REMOVE_HEAD(&tmp_queue, queue_entry);
 
 		trace("(3) %d work on %d", req->serial, gettid());
+
+		req->resp_len = virtio_request(req->buf, req->queue);
 		virtio_thread_request_done(req);
 	}
 

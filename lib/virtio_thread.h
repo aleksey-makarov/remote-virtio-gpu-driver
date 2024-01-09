@@ -3,7 +3,12 @@
 
 #include <sys/queue.h>
 
+struct vlo_buf;
+
 struct virtio_thread_request {
+	struct vlo_buf *buf;
+	unsigned int resp_len;
+	unsigned int queue;
 	unsigned int serial;
 	STAILQ_ENTRY(virtio_thread_request) queue_entry;
 };

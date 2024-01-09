@@ -413,7 +413,7 @@ int main(int argc, char **argv)
 
 	device_reset();
 
-	vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config));
+	vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config), NULL);
 	if (!vl) {
 		trace_err("vlo_init()");
 		goto error;

@@ -135,7 +135,8 @@ struct vlo *vlo_init(
 	struct virtio_lo_qinfo *qinfos,
 	unsigned int qinfosn,
 	void *config,
-	unsigned int confign
+	unsigned int confign,
+	uint64_t *features
 ) {
 	int err;
 	unsigned int i;
@@ -178,7 +179,7 @@ struct vlo *vlo_init(
 		.device_id = device_id,       /* __u32 IN */
 		.vendor_id = vendor_id,       /* __u32 IN */
 		.nqueues = qinfosn,           /* __u32 IN */
-		.features = 0,                /* __u64 IN/OUT */
+		.features = features ? *features : 0, /* __u64 IN/OUT */
 		.config_size = confign,       /* __u32 IN */
 		.config_kick = ret->config_fd,/* __s32 IN */
 		.card_index = 0,              /* __s32 IN */
@@ -208,6 +209,9 @@ struct vlo *vlo_init(
 		trace_err("maps_vrings()");
 		goto error_unmap_queues;
 	}
+
+	if (features)
+		*features = info.features;
 
 	return ret;
 

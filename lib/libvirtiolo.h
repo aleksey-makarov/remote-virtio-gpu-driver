@@ -37,7 +37,8 @@ struct vlo *vlo_init(
 	struct virtio_lo_qinfo *qinfos,
 	unsigned int qinfosn,
 	void *config,
-	unsigned int confign
+	unsigned int confign,
+	uint64_t *features
 );
 
 void vlo_done(struct vlo *v);

@@ -59,7 +59,7 @@ target_link_libraries(gtk_test PRIVATE ${extlibs_LIBRARIES} m)
 # gtk_gpu
 #
 
-add_executable(gtk_gpu gtk_gpu.c es2gears.c virtio_thread.c)
+add_executable(gtk_gpu gtk_gpu.c es2gears.c virtio_thread.c epoll_scheduler.c virtio_request.c rvgpu-iov.c)
 target_include_directories(gtk_gpu PRIVATE ${extlibs_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gtk_gpu PRIVATE ${extlibs_LIBRARIES} m pthread virtiolo)
 
