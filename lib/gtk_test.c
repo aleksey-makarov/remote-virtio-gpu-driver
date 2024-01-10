@@ -68,6 +68,7 @@ static void realize(GtkWidget *widget)
 	trace("GL_RENDERER: %s", cs);
 	cs = glGetString(GL_VERSION);
 	trace("GL_VERSION: %s", cs);
+	(void)cs;
 
 	gears = es2gears_init();
 	if (!gears) {

@@ -78,6 +78,7 @@ static void realize(GtkWidget *widget)
 	trace("GL_RENDERER: %s", cs);
 	cs = glGetString(GL_VERSION);
 	trace("GL_VERSION: %s", cs);
+	(void)cs;
 
 	gears = es2gears_init();
 	if (!gears) {
@@ -222,7 +223,7 @@ static gboolean on_eventfd_ready(
 
 		trace("(3) %d work on %d", req->serial, gettid());
 
-		req->resp_len = virtio_request(req->buf, req->queue);
+		req->resp_len = virtio_request(req->buf);
 		virtio_thread_request_done(req);
 	}
 

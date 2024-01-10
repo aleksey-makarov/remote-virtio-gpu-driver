@@ -7,6 +7,7 @@
 #include "error.h"
 #include "rvgpu-iov.h"
 
+#ifndef NDEBUG
 static const char *cmd_to_string(unsigned int type)
 {
 #define _X(n) case VIRTIO_GPU_CMD_ ## n: return #n ;
@@ -42,6 +43,7 @@ static const char *cmd_to_string(unsigned int type)
 
 #undef _X
 }
+#endif
 
 static unsigned int ctrl(struct virtio_gpu_ctrl_hdr *resp_hdr,
 			 struct iovec *r, unsigned int nr,
@@ -72,9 +74,9 @@ static unsigned int ctrl(struct virtio_gpu_ctrl_hdr *resp_hdr,
 }
 
 // returns resp_len
-unsigned int virtio_request(struct vlo_buf *buf, unsigned int queue)
+unsigned int virtio_request(struct vlo_buf *buf)
 {
-	assert(queue == 0 || queue == 1);
+	assert(buf);
 
 	// r - guest to device
 	// w - device to guest

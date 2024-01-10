@@ -3,6 +3,6 @@
 
 struct vlo_buf;
 
-unsigned int virtio_request(struct vlo_buf *buf, unsigned int queue);
+unsigned int virtio_request(struct vlo_buf *buf);
 
 #endif

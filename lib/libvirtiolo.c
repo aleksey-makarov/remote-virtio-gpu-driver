@@ -394,7 +394,9 @@ int vlo_config_get(struct vlo *vl, void *config, unsigned int config_length)
 	int err;
 
 	assert(config);
-	assert(config_length > vl->config_size);
+	assert(config_length >= vl->config_size);
+
+	(void)config_length;
 
 	struct virtio_lo_config cfg = {
 		.idx = vl->idx,
@@ -415,7 +417,9 @@ int vlo_config_set(struct vlo *vl, void *config, unsigned int config_length)
 	int err;
 
 	assert(config);
-	assert(config_length > vl->config_size);
+	assert(config_length >= vl->config_size);
+
+	(void)config_length;
 
 	struct virtio_lo_config cfg = {
 		.idx = vl->idx,
