@@ -29,8 +29,11 @@
 		__func__, __LINE__, ##__VA_ARGS__); })
 
 #ifdef NDEBUG
-static inline void trace(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
-static inline void trace(const char *format, ...) { (void)format; };
+/*
+ * This is how trace() and trace("") both could be possible
+ * in Release builds (NDEBUG is defined)
+ */
+# define trace(_format, ...) do {} while (0)
 #else
 # define trace(_format, ...) ({                      \
 	fprintf(stderr, "- %s():%d : " _format "\n", \
