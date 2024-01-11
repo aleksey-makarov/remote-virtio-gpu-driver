@@ -146,6 +146,10 @@
         type = "app";
         program = "${startvm_sh}";
       };
+      test_virglrenderer = {
+        type = "app";
+        program = "${startvm_sh}";
+      };
       default = startvm;
     };
   };

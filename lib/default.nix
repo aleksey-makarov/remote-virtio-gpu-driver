@@ -8,6 +8,7 @@
   gtk3,
   epoxy,
   glm,
+  virglrenderer,
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
@@ -27,6 +28,7 @@ stdenv.mkDerivation rec {
     gtk3
     epoxy
     glm
+    virglrenderer
   ];
 
   meta = with lib; {
