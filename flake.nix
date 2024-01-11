@@ -1,7 +1,9 @@
 {
   description = "Virtio Loopback Linux kernel module";
 
-  nixConfig.bash-prompt = "[\\033[1;33mvirtio-lo\\033[0m \\w]$ ";
+  nixConfig.bash-prompt = "virtio-lo";
+  nixConfig.bash-prompt-prefix = "[\\033[1;33m";
+  nixConfig.bash-prompt-suffix = "\\033[0m \\w]$ ";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
