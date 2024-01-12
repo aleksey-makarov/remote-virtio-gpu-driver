@@ -83,7 +83,7 @@ static void virgl_log_callback(
 	(void)user_data;
 	fprintf(stderr, "%c %s: %s",
 		log_level == VIRGL_LOG_LEVEL_ERROR ? '*' : '-',
-		virgl_log_level_to_string(log_level),
+		virgl_log_level_to_string(log_level) ?: "???",
 		message);
 }
 
@@ -111,6 +111,7 @@ int main(int argc, char **argv)
 	}
 
 	exit(EXIT_SUCCESS);
+
 err_close_drm:
 	close(drm_device_fd);
 err:
