@@ -10,10 +10,28 @@ static void test_write_fence(void *cookie, uint32_t fence)
 {
 	(void)cookie;
 	(void)fence;
+	trace();
 }
 
+
+static int test_get_drm_fd(void *cookie)
+{
+	(void)cookie;
+	trace();
+	return 0;
+}
+
+#if 0
+static virgl_renderer_gl_context create_gl_context(void *cookie, int scanout_idx, struct virgl_renderer_gl_ctx_param *param)
+{ return NULL; }
+static void destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
+{}
+static int make_current(void *cookie, int scanout_idx, virgl_renderer_gl_context ctx)
+{ return 0; }
+#endif
+
 struct virgl_renderer_callbacks virgl_cbs = {
-	.version = 1,
+	.version = 2,
 	.write_fence = test_write_fence,
 #if 0
 	/*
@@ -27,8 +45,41 @@ struct virgl_renderer_callbacks virgl_cbs = {
 	void (*destroy_gl_context)(void *cookie, virgl_renderer_gl_context ctx);
 	/* make a context current, returns 0 on success and negative errno on failure */
 	int (*make_current)(void *cookie, int scanout_idx, virgl_renderer_gl_context ctx);
+#else
+	.create_gl_context = NULL,
+	.destroy_gl_context = NULL,
+	.make_current = NULL,
+
 #endif
+	.get_drm_fd = test_get_drm_fd,
 };
+
+static const char *virgl_log_level_to_string(enum virgl_log_level_flags l)
+{
+	switch(l) {
+#define _X(x) case VIRGL_LOG_LEVEL_ ## x: return #x;
+	_X(DEBUG)
+	_X(INFO)
+	_X(WARNING)
+	_X(ERROR)
+	_X(SILENT)
+#undef _X
+	default:
+		return NULL;
+	}
+}
+
+static void virgl_log_callback(
+	enum virgl_log_level_flags log_level,
+	const char *message,
+	void* user_data)
+{
+	(void)user_data;
+	fprintf(stderr, "%c %s: %s",
+		log_level == VIRGL_LOG_LEVEL_ERROR ? '*' : '-',
+		virgl_log_level_to_string(log_level),
+		message);
+}
 
 int main(int argc, char **argv)
 {
@@ -37,10 +88,11 @@ int main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-	printf("Hello world\n");
+	trace("Hello world");
 
-	int virgl_flags = VIRGL_RENDERER_USE_EGL | VIRGL_RENDERER_USE_SURFACELESS;
-	err = virgl_renderer_init(NULL, virgl_flags, &virgl_cbs);
+	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
+
+	err = virgl_renderer_init(NULL, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		error("virgl_renderer_init(): %s", strerror(err));
 		goto err;
