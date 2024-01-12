@@ -1,10 +1,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "error.h"
 
 #include <virgl/virglrenderer.h>
+
+static const char *drm_device = "/dev/dri/card0";
+static int drm_device_fd;
 
 static void test_write_fence(void *cookie, uint32_t fence)
 {
@@ -18,7 +25,7 @@ static int test_get_drm_fd(void *cookie)
 {
 	(void)cookie;
 	trace();
-	return 0;
+	return drm_device_fd;
 }
 
 #if 0
@@ -62,7 +69,6 @@ static const char *virgl_log_level_to_string(enum virgl_log_level_flags l)
 	_X(INFO)
 	_X(WARNING)
 	_X(ERROR)
-	_X(SILENT)
 #undef _X
 	default:
 		return NULL;
@@ -85,20 +91,28 @@ int main(int argc, char **argv)
 {
 	int err;
 
-	(void)argc;
-	(void)argv;
+	if (argc == 2)
+		drm_device = argv[1];
 
-	trace("Hello world");
+	trace("drm device: \"%s\"", drm_device);
+
+	drm_device_fd = open(drm_device, O_RDWR);
+	if (drm_device_fd < 0) {
+		error_errno("open(\"%s\")", drm_device);
+		goto err;
+	}
 
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
 	err = virgl_renderer_init(NULL, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		error("virgl_renderer_init(): %s", strerror(err));
-		goto err;
+		goto err_close_drm;
 	}
 
 	exit(EXIT_SUCCESS);
+err_close_drm:
+	close(drm_device_fd);
 err:
 	exit(EXIT_FAILURE);
 }
