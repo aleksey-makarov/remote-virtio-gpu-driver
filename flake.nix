@@ -41,9 +41,15 @@
         };
       libvirtiolo = super.callPackage ./lib {};
 
-      libvirtiolo-debug = self.libvirtiolo.overrideAttrs (_: _: {
+      libvirtiolo-debug = (self.libvirtiolo.overrideAttrs (_: _: {
         cmakeBuildType = "Debug";
         separateDebugInfo = true;
+      })).override {
+        virglrenderer = self.virglrenderer-debug;
+      };
+
+      virglrenderer-debug = super.virglrenderer.overrideAttrs (_: _: {
+        mesonFlags = ["-Dtracing=stderr"];
       });
     };
 
@@ -90,8 +96,6 @@
       ${pkgs.nixgl.nixGLMesa}/bin/nixGLMesa ${nixos.vm}/bin/run-nixos-vm
       ${pkgs.coreutils}/bin/stty intr ^c
     '';
-
-
   in {
     overlays.${system} = {
       default = overlay;
