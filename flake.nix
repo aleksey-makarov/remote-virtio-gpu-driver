@@ -18,6 +18,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    virglrenderer-debug-flake = {
+      url = "git+file:/home/amakarov/work/virglrenderer";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.nixGL.follows = "nixGL";
+    };
   };
 
   outputs = {
@@ -26,6 +32,7 @@
     flake-utils,
     nixGL,
     nix-vscode-extensions,
+    virglrenderer-debug-flake,
   }: let
     system = "x86_64-linux";
 
@@ -41,16 +48,20 @@
         };
       libvirtiolo = super.callPackage ./lib {};
 
-      libvirtiolo-debug = (self.libvirtiolo.overrideAttrs (_: _: {
-        cmakeBuildType = "Debug";
-        separateDebugInfo = true;
-      })).override {
-        virglrenderer = self.virglrenderer-debug;
-      };
+      libvirtiolo-debug =
+        (self.libvirtiolo.overrideAttrs (_: _: {
+          cmakeBuildType = "Debug";
+          separateDebugInfo = true;
+        }))
+        .override {
+          virglrenderer = self.virglrenderer-debug;
+        };
 
-      virglrenderer-debug = super.virglrenderer.overrideAttrs (_: _: {
-        mesonFlags = ["-Dtracing=stderr"];
-      });
+      virglrenderer-debug = (virglrenderer-debug-flake.overlays.default self super).virglrenderer;
+
+      # virglrenderer-debug = super.virglrenderer.overrideAttrs (_: _: {
+      #   mesonFlags = ["-Dtracing=stderr"];
+      # });
     };
 
     pkgs = (nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay;
@@ -111,6 +122,8 @@
       virtio-lo-dev = pkgs.linuxPackages.virtio-lo.dev;
 
       vduse = pkgs.linuxPackages.vduse;
+
+      virglrenderer-debug = pkgs.virglrenderer-debug;
 
       default = libvirtiolo;
     };

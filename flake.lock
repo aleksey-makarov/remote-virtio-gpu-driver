@@ -102,7 +102,8 @@
         "flake-utils": "flake-utils",
         "nix-vscode-extensions": "nix-vscode-extensions",
         "nixGL": "nixGL",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "virglrenderer-debug-flake": "virglrenderer-debug-flake"
       }
     },
     "systems": {
@@ -118,6 +119,32 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "virglrenderer-debug-flake": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixGL": [
+          "nixGL"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1705312737,
+        "narHash": "sha256-gqK0j692KPbBlflTszskuJM0qUOV9TcxZeDiD+w/4b8=",
+        "ref": "refs/heads/work",
+        "rev": "33a139554e4b8e6117dd73391c846f0bfc59dbee",
+        "revCount": 3539,
+        "type": "git",
+        "url": "file:/home/amakarov/work/virglrenderer"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:/home/amakarov/work/virglrenderer"
       }
     }
   },
