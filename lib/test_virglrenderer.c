@@ -5,8 +5,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <sys/eventfd.h>
 
+#include "gettid.h"
+#include "epoll_scheduler.h"
 #include "virtio_thread.h"
+#include "virtio_request.h"
 #include "error.h"
 
 #include <virgl/virglrenderer.h>
@@ -88,24 +93,88 @@ static void virgl_log_callback(
 		message);
 }
 
+static pthread_mutex_t req_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+static STAILQ_HEAD(, virtio_thread_request) req_queue = STAILQ_HEAD_INITIALIZER(req_queue);
+
+static enum es_test_result test_wait(struct es_thread *self)
+{
+	(void)self;
+	return ES_WAIT;
+}
+
+static int notify_go(struct es_thread *self, uint32_t events)
+{
+	(void)self;
+	(void)events;
+
+	static STAILQ_HEAD(, virtio_thread_request) tmp_queue = STAILQ_HEAD_INITIALIZER(tmp_queue);
+	eventfd_t ev;
+	int err;
+
+	err = eventfd_read(self->fd, &ev);
+	if (err < 0) {
+		error("eventfd_read()");
+		goto out;
+	}
+
+	pthread_mutex_lock(&req_queue_mutex);
+	STAILQ_CONCAT(&tmp_queue, &req_queue);
+	pthread_mutex_unlock(&req_queue_mutex);
+
+	while(!STAILQ_EMPTY(&tmp_queue)) {
+		struct virtio_thread_request *req = STAILQ_FIRST(&tmp_queue);
+		STAILQ_REMOVE_HEAD(&tmp_queue, queue_entry);
+
+		trace("(3) %d put %d", req->serial, gettid());
+
+		req->resp_len = virtio_request(req->buf);
+		virtio_thread_request_done(req);
+	}
+out:
+	return 0;
+}
+
+static struct es_thread notify_thread = {
+	.name   = "notify",
+	.events = EPOLLIN,
+	.test   = test_wait,
+	.go     = notify_go,
+	.done   = NULL,
+};
+
+// called from the helper thread
 void virtio_thread_new_request(struct virtio_thread_request *req)
 {
-	(void)req;
+	trace("(2) %d put %d", req->serial, gettid());
+
+	pthread_mutex_lock(&req_queue_mutex);
+	STAILQ_INSERT_TAIL(&req_queue, req, queue_entry);
+	pthread_mutex_unlock(&req_queue_mutex);
+
+	int err = eventfd_write(notify_thread.fd, 1);
+	if (err < 0)
+		error_errno("eventfd_write()");
 }
 
 int main(int argc, char **argv)
 {
+	struct es *es;
 	int err;
+
+	notify_thread.fd = eventfd(0, EFD_NONBLOCK);
+	if (notify_thread.fd < 0) {
+		error_errno("eventfd()");
+		goto err;
+	}
 
 	if (argc == 2)
 		drm_device = argv[1];
 
-	trace("drm device: \"%s\"", drm_device);
-
+	trace("open(\"%s\")", drm_device);
 	drm_device_fd = open(drm_device, O_RDWR);
 	if (drm_device_fd < 0) {
 		error_errno("open(\"%s\")", drm_device);
-		goto err;
+		goto err_close_efd;
 	}
 
 	err = virtio_thread_start();
@@ -123,12 +192,34 @@ int main(int argc, char **argv)
 		goto err_stop_virtio_thread;
 	}
 
+	es = es_init(
+		&notify_thread,
+		NULL);
+	if (!es) {
+		error("es_init()");
+		goto err_virgl_cleanup;
+	}
+
+	err = es_schedule(es);
+	if (err < 0) {
+		error("es_schedule()");
+		goto err_virgl_cleanup;
+	}
+
+	virgl_renderer_cleanup(NULL);
+	virtio_thread_stop();
+	close(drm_device_fd);
+	close(notify_thread.fd);
 	exit(EXIT_SUCCESS);
 
+err_virgl_cleanup:
+	virgl_renderer_cleanup(NULL);
 err_stop_virtio_thread:
 	virtio_thread_stop();
 err_close_drm:
 	close(drm_device_fd);
+err_close_efd:
+	close(notify_thread.fd);
 err:
 	exit(EXIT_FAILURE);
 }
