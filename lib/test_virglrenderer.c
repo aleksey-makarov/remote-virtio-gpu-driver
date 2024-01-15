@@ -104,7 +104,8 @@ int main(int argc, char **argv)
 
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
-	err = virgl_renderer_init(NULL, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
+	// For some reason cookie can not be NULL
+	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		error("virgl_renderer_init(): %s", strerror(err));
 		goto err_close_drm;
