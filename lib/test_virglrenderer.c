@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "virtio_thread.h"
 #include "error.h"
 
 #include <virgl/virglrenderer.h>
@@ -87,6 +88,11 @@ static void virgl_log_callback(
 		message);
 }
 
+void virtio_thread_new_request(struct virtio_thread_request *req)
+{
+	(void)req;
+}
+
 int main(int argc, char **argv)
 {
 	int err;
@@ -102,17 +108,25 @@ int main(int argc, char **argv)
 		goto err;
 	}
 
+	err = virtio_thread_start();
+	if (err) {
+		error("virtio_thread_start()");
+		goto err_close_drm;
+	}
+
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
 	// For some reason cookie can not be NULL
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		error("virgl_renderer_init(): %s", strerror(err));
-		goto err_close_drm;
+		goto err_stop_virtio_thread;
 	}
 
 	exit(EXIT_SUCCESS);
 
+err_stop_virtio_thread:
+	virtio_thread_stop();
 err_close_drm:
 	close(drm_device_fd);
 err:
