@@ -45,27 +45,52 @@ static const char *cmd_to_string(unsigned int type)
 }
 #endif
 
-static unsigned int ctrl(struct virtio_gpu_ctrl_hdr *resp_hdr,
+static unsigned int test_virgl_get_capset_info(struct virtio_gpu_ctrl_hdr *hdr,
+					       struct iovec *w, unsigned int nw)
+{
+	(void)hdr;
+	(void)w;
+	(void)nw;
+
+	return 0;
+}
+
+static unsigned int test_virgl_get_capset(struct virtio_gpu_ctrl_hdr *hdr,
+					  struct iovec *w, unsigned int nw)
+{
+	(void)hdr;
+	(void)w;
+	(void)nw;
+
+	return 0;
+}
+
+static unsigned int ctrl(struct virtio_gpu_ctrl_hdr *hdr,
 			 struct iovec *r, unsigned int nr,
 			 struct iovec *w, unsigned int nw)
 {
 	(void)r;
 	(void)nr;
-	(void)w;
-	(void)nw;
 
-	trace("cmd=\"%s\"", cmd_to_string(resp_hdr->type) ?: "???");
+	trace("cmd=\"%s\"", cmd_to_string(hdr->type) ?: "???");
 
 	unsigned int resp_len = sizeof(struct virtio_gpu_ctrl_hdr);
 
-	switch(resp_hdr->type) {
+	switch(hdr->type) {
+	case VIRTIO_GPU_CMD_GET_CAPSET_INFO:
+		resp_len = test_virgl_get_capset_info(hdr, w, nw);
+		break;
+	case VIRTIO_GPU_CMD_GET_CAPSET:
+		resp_len = test_virgl_get_capset(hdr, w, nw);
+		break;
+		break;
 	default:
+		hdr->type = VIRTIO_GPU_RESP_ERR_UNSPEC;
+		hdr->flags = 0;
 		break;
 	}
 
 	// resp_hdr->type = VIRTIO_GPU_RESP_OK_NODATA;
-	resp_hdr->type = VIRTIO_GPU_RESP_ERR_UNSPEC;
-	resp_hdr->flags = 0;
 	// fence_id;
 	// ctx_id;
 	// ring_idx;
