@@ -74,7 +74,7 @@ static int _es_add(struct es *es, struct es_thread *th)
 	th->private.data.u32 = es->data_len;
 	th->private.events = 0;
 
-	trace("epoll_ctl(ADD) n=%u, epoll_fd=%d, name=\"%s\", fd=%d", es->data_len, es->epoll_fd, th->name, th->fd);
+	// trace("epoll_ctl(ADD) n=%u, epoll_fd=%d, name=\"%s\", fd=%d", es->data_len, es->epoll_fd, th->name, th->fd);
 	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
 	if (ret < 0) {
 		error_errno("epoll_ctl(ADD \"%s\") n=%u", th->name, es->data_len);
@@ -146,7 +146,7 @@ struct es *es_init(struct es_thread *thread, ...)
 		goto error_epoll_ctl_del;
 	}
 
-	trace("new scheduler: len=%u, capacity=%u", es->data_len, es->data_capacity);
+	// trace("new scheduler: len=%u, capacity=%u", es->data_len, es->data_capacity);
 
 	va_end(va1);
 	va_end(va2);
@@ -193,7 +193,7 @@ int es_add(struct es *es, struct es_thread *thread)
 		return ret;
 	}
 
-	trace("new thread: name=%s", thread->name);
+	// trace("new thread: name=%s", thread->name);
 	return 0;
 }
 
@@ -218,10 +218,11 @@ int es_schedule(struct es *es)
 			ret = th->test(th);
 			th->ready = false;
 			if (ret == ES_DONE || ret < 0) {
-				if (ret < 0)
+				if (ret < 0) {
 					error("\"%s\" test reported error", th->name);
-				else
-					trace("\"%s\" requested shutdown", th->name);
+				} else {
+					// trace("\"%s\" requested shutdown", th->name);
+				}
 				goto done;
 			} else if (ret == ES_EXIT_THREAD) {
 				ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
@@ -229,7 +230,7 @@ int es_schedule(struct es *es)
 					error_errno("epoll_ctl(DEL) (\"%s\")", th->name);
 					goto done;
 				}
-				trace("\"%s\" is quitting", th->name);
+				// trace("\"%s\" is quitting", th->name);
 				if (th->done)
 					th->done(th);
 				es->data[n] = NULL;
