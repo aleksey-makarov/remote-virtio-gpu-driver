@@ -57,14 +57,6 @@ target_include_directories(gtk_test PRIVATE ${extlibs_INCLUDE_DIRS})
 target_link_libraries(gtk_test PRIVATE ${extlibs_LIBRARIES} m)
 
 #
-# gtk_gpu
-#
-
-add_executable(gtk_gpu gtk_gpu.c es2gears.c virtio_thread.c epoll_scheduler.c virtio_request.c rvgpu-iov.c)
-target_include_directories(gtk_gpu PRIVATE ${extlibs_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(gtk_gpu PRIVATE ${extlibs_LIBRARIES} m pthread virtiolo)
-
-#
 # test_virglrenderer
 #
 
@@ -79,6 +71,6 @@ include(GNUInstallDirs)
 
 configure_file(libvirtiolo.pc.in libvirtiolo.pc @ONLY)
 
-install(TARGETS virtiolo test_lo test_vduse test_vduse_gpu gtk_test gtk_gpu test_virglrenderer)
+install(TARGETS virtiolo test_lo test_vduse test_vduse_gpu gtk_test test_virglrenderer)
 install(FILES libvirtiolo.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libvirtiolo.pc DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
