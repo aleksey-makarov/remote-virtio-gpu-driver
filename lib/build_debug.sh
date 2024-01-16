@@ -10,7 +10,7 @@ mkdir -p "$INSTALL_DIR"
 
 echo "install: $INSTALL_DIR, build: $BUILD_DIR"
 
-cmake --install-prefix / -D CMAKE_BUILD_TYPE=Debug -S . -B "$BUILD_DIR"
+cmake --install-prefix / -D CMAKE_BUILD_TYPE=Debug -D CMAKE_C_FLAGS="-fdiagnostics-color=always" -D CMAKE_VERBOSE_MAKEFILE=1 -S . -B "$BUILD_DIR"
 
 ln -fs -T "$INSTALL_DIR" install
 ln -fs -T "$BUILD_DIR" build
