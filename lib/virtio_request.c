@@ -1,102 +1,152 @@
 #include "virtio_request.h"
 
+#include <string.h>
 #include <assert.h>
 
+#include <virgl/virglrenderer.h>
+
+#include <linux/virtio_gpu.h>
+
 #include "libvirtiolo.h"
-#include "virtio_gpu_cmd.h"
+// #include "virtio_gpu_cmd.h"
 #include "error.h"
 #include "rvgpu-iov.h"
+
+#define CMDDB \
+	_X(GET_DISPLAY_INFO,        _CN,                            _RY(display_info)) \
+	_X(RESOURCE_CREATE_2D,      _CY(resource_create_2d),        _RN) \
+	_X(RESOURCE_UNREF,          _CY(resource_unref),            _RN) \
+	_X(SET_SCANOUT,             _CY(set_scanout),               _RN) \
+	_X(RESOURCE_FLUSH,          _CY(resource_flush),            _RN) \
+	_X(TRANSFER_TO_HOST_2D,     _CY(transfer_to_host_2d),       _RN) \
+	_X(RESOURCE_ATTACH_BACKING, _CY(resource_attach_backing),   _RN) \
+	_X(RESOURCE_DETACH_BACKING, _CY(resource_detach_backing),   _RN) \
+	_X(GET_CAPSET_INFO,         _CY(get_capset_info),           _RY(capset_info)) \
+	_X(GET_CAPSET,              _CY(get_capset),                _RY(capset)) \
+	_X(RESOURCE_ASSIGN_UUID,    _CY(resource_assign_uuid),      _RY(resource_uuid)) \
+\
+	/* 3d commands */ \
+	_X(CTX_CREATE,              _CY(ctx_create),                _RN) \
+	_X(CTX_DESTROY,             _CY(ctx_destroy),               _RN) \
+	_X(CTX_ATTACH_RESOURCE,     _CY(ctx_resource),              _RN) \
+	_X(CTX_DETACH_RESOURCE,     _CY(ctx_resource),              _RN) \
+	_X(RESOURCE_CREATE_3D,      _CY(resource_create_3d),        _RN) \
+	_X(TRANSFER_TO_HOST_3D,     _CY(transfer_host_3d),          _RN) \
+	_X(TRANSFER_FROM_HOST_3D,   _CY(transfer_host_3d),          _RN) \
+	_X(SUBMIT_3D,               _CY(cmd_submit),                _RN) \
+\
+	/* Cursor commands */ \
+	_X(MOVE_CURSOR,             _CY(update_cursor),             _RN) \
+	_X(UPDATE_CURSOR,           _CY(update_cursor),             _RN)
 
 #ifndef NDEBUG
 static const char *cmd_to_string(unsigned int type)
 {
-#define _X(n) case VIRTIO_GPU_CMD_ ## n: return #n ;
-
 	switch (type) {
-	_X(GET_DISPLAY_INFO)
-	_X(RESOURCE_CREATE_2D)
-	_X(RESOURCE_UNREF)
-	_X(SET_SCANOUT)
-	_X(RESOURCE_FLUSH)
-	_X(TRANSFER_TO_HOST_2D)
-	_X(RESOURCE_ATTACH_BACKING)
-	_X(RESOURCE_DETACH_BACKING)
-	_X(GET_CAPSET_INFO)
-	_X(GET_CAPSET)
-
-	/* 3d commands */
-	_X(CTX_CREATE)
-	_X(CTX_DESTROY)
-	_X(CTX_ATTACH_RESOURCE)
-	_X(CTX_DETACH_RESOURCE)
-	_X(RESOURCE_CREATE_3D)
-	_X(TRANSFER_TO_HOST_3D)
-	_X(TRANSFER_FROM_HOST_3D)
-	_X(SUBMIT_3D)
-
-	/* Cursor commands */
-	_X(MOVE_CURSOR)
-	_X(UPDATE_CURSOR)
-
-	default: return NULL;
-	}
-
+#define _X(n, x1, x2) case VIRTIO_GPU_CMD_ ## n: return #n ;
+CMDDB
 #undef _X
+	default: return 0;
+	}
 }
 #endif
 
-static unsigned int test_virgl_get_capset_info(struct virtio_gpu_ctrl_hdr *hdr,
-					       struct iovec *w, unsigned int nw)
+static unsigned int cmd_to_rsize(unsigned int type)
 {
-	(void)hdr;
-	(void)w;
-	(void)nw;
-
-	return 0;
-}
-
-static unsigned int test_virgl_get_capset(struct virtio_gpu_ctrl_hdr *hdr,
-					  struct iovec *w, unsigned int nw)
-{
-	(void)hdr;
-	(void)w;
-	(void)nw;
-
-	return 0;
-}
-
-static unsigned int ctrl(struct virtio_gpu_ctrl_hdr *hdr,
-			 struct iovec *r, unsigned int nr,
-			 struct iovec *w, unsigned int nw)
-{
-	(void)r;
-	(void)nr;
-
-	trace("cmd=\"%s\"", cmd_to_string(hdr->type) ?: "???");
-
-	unsigned int resp_len = sizeof(struct virtio_gpu_ctrl_hdr);
-
-	switch(hdr->type) {
-	case VIRTIO_GPU_CMD_GET_CAPSET_INFO:
-		resp_len = test_virgl_get_capset_info(hdr, w, nw);
-		break;
-	case VIRTIO_GPU_CMD_GET_CAPSET:
-		resp_len = test_virgl_get_capset(hdr, w, nw);
-		break;
-		break;
-	default:
-		hdr->type = VIRTIO_GPU_RESP_ERR_UNSPEC;
-		hdr->flags = 0;
-		break;
+	switch (type) {
+#define _CY(t) sizeof (struct virtio_gpu_ ## t)
+#define _CN sizeof(struct virtio_gpu_ctrl_hdr)
+#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: return rt;
+CMDDB
+#undef _CY
+#undef _CN
+#undef _X
+	default: return 0;
 	}
-
-	// resp_hdr->type = VIRTIO_GPU_RESP_OK_NODATA;
-	// fence_id;
-	// ctx_id;
-	// ring_idx;
-
-	return resp_len;
 }
+
+static unsigned int cmd_to_wsize(unsigned int type)
+{
+	switch (type) {
+#define _RY(t) sizeof (struct virtio_gpu_resp_ ## t)
+#define _RN sizeof(struct virtio_gpu_ctrl_hdr)
+#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: return wt;
+CMDDB
+#undef _RY
+#undef _RN
+#undef _X
+	default: return 0;
+	}
+}
+
+// Prototypes
+#define _CY(t)        struct virtio_gpu_ ## t *cmd
+#define _CN           struct virtio_gpu_ctrl_hdr *cmd
+#define _RY(t)        struct virtio_gpu_resp_ ## t *resp
+#define _RN           struct virtio_gpu_ctrl_hdr *resp
+
+#define _X(n, rt, wt) static unsigned int cmd_ ## n (rt, wt);
+CMDDB
+#undef _X
+
+#undef _CY
+#undef _CN
+#undef _RY
+#undef _RN
+
+static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_host_2d *cmd,     struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_ASSIGN_UUID(   struct virtio_gpu_resource_assign_uuid *cmd,    struct virtio_gpu_resp_resource_uuid *resp) { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_CTX_CREATE(             struct virtio_gpu_ctx_create *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_CTX_DESTROY(            struct virtio_gpu_ctx_destroy *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_CTX_ATTACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_CTX_DETACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_RESOURCE_CREATE_3D(     struct virtio_gpu_resource_create_3d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_TRANSFER_TO_HOST_3D(    struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_TRANSFER_FROM_HOST_3D(  struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_SUBMIT_3D(              struct virtio_gpu_cmd_submit *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_MOVE_CURSOR(            struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+static unsigned int cmd_UPDATE_CURSOR(          struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+
+static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, struct virtio_gpu_resp_capset_info *resp)
+{
+	trace("index=%u", cmd->capset_index);
+
+	memset(&resp, 0, sizeof(resp));
+	if (cmd->capset_index == 0) {
+		trace();
+		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL;
+		virgl_renderer_get_cap_set(resp->capset_id,
+		                           &resp->capset_max_version,
+		                           &resp->capset_max_size);
+	} else if (cmd->capset_index == 1) {
+		trace();
+		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL2;
+		virgl_renderer_get_cap_set(resp->capset_id,
+		                           &resp->capset_max_version,
+		                           &resp->capset_max_size);
+	} else {
+		trace();
+		resp->capset_max_version = 0;
+		resp->capset_max_size = 0;
+	}
+	resp->hdr.type = VIRTIO_GPU_RESP_OK_CAPSET_INFO;
+
+	trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
+
+	return sizeof(*resp);
+}
+
+// static unsigned int cmd_GET_CAPSET(struct virtio_gpu_get_capset *cmd, struct virtio_gpu_resp_capset *resp)
+// { (void)cmd; (void)resp; return 0; }
 
 // returns resp_len
 unsigned int virtio_request(struct vlo_buf *buf)
@@ -111,8 +161,12 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	size_t nw = buf->ion - nr;
 	size_t copied;
 
-	struct virtio_gpu_ctrl_hdr resp_hdr_buf;
-	struct virtio_gpu_ctrl_hdr *resp_hdr;
+	unsigned char cmd_buf[1024];
+	struct virtio_gpu_ctrl_hdr *cmd_hdr = (struct virtio_gpu_ctrl_hdr * )&cmd_buf;
+	void *cmd = &cmd_buf;
+
+	unsigned char resp_buf[1024];
+	void *resp = &resp_buf;
 
 	unsigned int resp_len;
 
@@ -121,24 +175,62 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		return 0;
 	}
 
+	virgl_renderer_poll();
+
 	// FIXME: check mapping (readonly, writeonly)
 
-	if (w[0].iov_len >= sizeof(struct virtio_gpu_ctrl_hdr))
-		resp_hdr = w[0].iov_base;
-	else
-		resp_hdr = &resp_hdr_buf;
-
-	copied = copy_from_iov(r, nr, resp_hdr, sizeof(*resp_hdr));
-	if (copied != sizeof(*resp_hdr)) {
-		error("command buffer is too small");
-		return 0;
+	if (r[0].iov_len >= sizeof(struct virtio_gpu_ctrl_hdr)) {
+		trace("header: can use iov_base");
+		cmd_hdr = r[0].iov_base;
+	} else {
+		trace("header: have to copy");
+		copied = copy_from_iov(r, nr, cmd_hdr, sizeof(struct virtio_gpu_ctrl_hdr));
+		if (copied != sizeof(struct virtio_gpu_ctrl_hdr)) {
+			error("command buffer is too small (hdr)");
+			return 0;
+		}
 	}
 
-	resp_len = ctrl(resp_hdr, r, nr, w, nw);
+	trace("cmd=\"%s\"", cmd_to_string(cmd_hdr->type) ?: "???");
 
-	if (resp_hdr == &resp_hdr_buf) {
-		copied = copy_to_iov(w, nw, &resp_hdr_buf, sizeof(resp_hdr_buf));
-		if (copied != sizeof(resp_hdr_buf)) {
+	unsigned int rs = cmd_to_rsize(cmd_hdr->type);
+	if (!rs) {
+		error("unknown command %u", cmd_hdr->type);
+		return 0;
+	}
+	unsigned int ws = cmd_to_wsize(cmd_hdr->type);
+	assert(ws); // zeroes should be excluded by cmd_to_rsize()
+
+	if (rs == sizeof(struct virtio_gpu_ctrl_hdr) || r[0].iov_len >= rs) {
+		trace("cmd: can use iov_base");
+		cmd = r[0].iov_base;
+	} else {
+		trace("cmd: have to copy");
+		copied = copy_from_iov(r, nr, cmd, rs);
+		if (copied != rs) {
+			error("command buffer is too small (cmd)");
+			return 0;
+		}
+	}
+
+	if (w[0].iov_len >= ws) {
+		trace("resp: can use iov_base");
+		resp = w[0].iov_base;
+	}
+
+	switch(cmd_hdr->type) {
+#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: resp_len = cmd_ ## n (cmd, resp); break;
+CMDDB
+#undef _X
+	default:
+		resp_len = 0;
+		assert(0); // these sould be ruled out by cmd_to_?size()
+	}
+
+	if (resp == &resp_buf) {
+		trace("resp: have to copy back to iov");
+		copied = copy_to_iov(w, nw, resp, ws);
+		if (copied != ws) {
 			error("responce buffer is too small");
 			return 0;
 		}
