@@ -33,6 +33,7 @@ with lib; {
 
       # kernelParams = [ "video=1920x1080" ];
       # kernelParams = [ "drm.debug=0x1ff" ];
+      kernelParams = ["drm.debug=0x006"];
     };
 
     # from profiles/minimal.nix
