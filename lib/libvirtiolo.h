@@ -7,6 +7,8 @@
 #include <linux/virtio_ring.h>
 #include <linux/virtio_lo.h>
 
+#include "counted_by.h"
+
 struct vlo;
 struct vlo_vring;
 
@@ -24,7 +26,7 @@ struct vlo_buf {
 	 * ion_transmit is the length of the guest transmit subarray
 	 */
 	unsigned int ion_transmit;
-	struct iovec io[];
+	struct iovec io[] __counted_by(ion);
 };
 
 /*
