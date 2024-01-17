@@ -120,19 +120,21 @@ static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, 
 {
 	trace("index=%u", cmd->capset_index);
 
-	memset(&resp, 0, sizeof(resp));
+	memset(resp, 0, sizeof(*resp));
 	if (cmd->capset_index == 0) {
-		trace();
 		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL;
-		virgl_renderer_get_cap_set(resp->capset_id,
-		                           &resp->capset_max_version,
-		                           &resp->capset_max_size);
-	} else if (cmd->capset_index == 1) {
 		trace();
-		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL2;
 		virgl_renderer_get_cap_set(resp->capset_id,
 		                           &resp->capset_max_version,
 		                           &resp->capset_max_size);
+		trace();
+	} else if (cmd->capset_index == 1) {
+		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL2;
+		trace();
+		virgl_renderer_get_cap_set(resp->capset_id,
+		                           &resp->capset_max_version,
+		                           &resp->capset_max_size);
+		trace();
 	} else {
 		trace();
 		resp->capset_max_version = 0;
@@ -176,6 +178,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	}
 
 	virgl_renderer_poll();
+	virgl_renderer_force_ctx_0();
 
 	// FIXME: check mapping (readonly, writeonly)
 
