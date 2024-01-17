@@ -281,11 +281,12 @@ static void *virtio_thread(void *ptr)
 	return NULL;
 }
 
-int virtio_thread_start(void)
+int virtio_thread_start(unsigned int num_capsets)
 {
 	int err;
 
 	struct virtio_lo_qinfo qinfos[2] = { { .size = 1024u, }, { .size = 1024u, }, };
+	config.num_capsets = num_capsets;
 
 	notify_thread.fd = eventfd(0, EFD_NONBLOCK);
 	if (notify_thread.fd < 0) {

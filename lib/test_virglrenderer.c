@@ -8,13 +8,15 @@
 #include <pthread.h>
 #include <sys/eventfd.h>
 
+#include <linux/virtio_gpu.h>
+
+#include <virgl/virglrenderer.h>
+
 #include "gettid.h"
 #include "epoll_scheduler.h"
 #include "virtio_thread.h"
 #include "virtio_request.h"
 #include "error.h"
-
-#include <virgl/virglrenderer.h>
 
 static const char *drm_device = "/dev/dri/card0";
 static int drm_device_fd;
@@ -156,6 +158,13 @@ void virtio_thread_new_request(struct virtio_thread_request *req)
 		error_errno("eventfd_write()");
 }
 
+static unsigned int get_num_capsets(void)
+{
+	uint32_t capset2_max_ver, capset2_max_size;
+	virgl_renderer_get_cap_set(VIRTIO_GPU_CAPSET_VIRGL2, &capset2_max_ver, &capset2_max_size);
+	return capset2_max_ver ? 2 : 1;
+}
+
 int main(int argc, char **argv)
 {
 	struct es *es;
@@ -177,19 +186,22 @@ int main(int argc, char **argv)
 		goto err_close_efd;
 	}
 
-	err = virtio_thread_start();
-	if (err) {
-		error("virtio_thread_start()");
-		goto err_close_drm;
-	}
-
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
 	// For some reason cookie can not be NULL
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		error("virgl_renderer_init(): %s", strerror(err));
-		goto err_stop_virtio_thread;
+		goto err_close_drm;
+	}
+
+	unsigned int num_capsets = get_num_capsets();
+	trace("num_capsets=%u", num_capsets);
+
+	err = virtio_thread_start(num_capsets);
+	if (err) {
+		error("virtio_thread_start()");
+		goto err_virgl_cleanup;
 	}
 
 	es = es_init(
@@ -197,25 +209,25 @@ int main(int argc, char **argv)
 		NULL);
 	if (!es) {
 		error("es_init()");
-		goto err_virgl_cleanup;
+		goto err_stop_virtio_thread;
 	}
 
 	err = es_schedule(es);
 	if (err < 0) {
 		error("es_schedule()");
-		goto err_virgl_cleanup;
+		goto err_stop_virtio_thread;
 	}
 
-	virgl_renderer_cleanup(NULL);
 	virtio_thread_stop();
+	virgl_renderer_cleanup(NULL);
 	close(drm_device_fd);
 	close(notify_thread.fd);
 	exit(EXIT_SUCCESS);
 
-err_virgl_cleanup:
-	virgl_renderer_cleanup(NULL);
 err_stop_virtio_thread:
 	virtio_thread_stop();
+err_virgl_cleanup:
+	virgl_renderer_cleanup(NULL);
 err_close_drm:
 	close(drm_device_fd);
 err_close_efd:
