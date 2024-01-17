@@ -8,36 +8,35 @@
 #include <linux/virtio_gpu.h>
 
 #include "libvirtiolo.h"
-// #include "virtio_gpu_cmd.h"
 #include "error.h"
 #include "rvgpu-iov.h"
 
 #define CMDDB \
-	_X(GET_DISPLAY_INFO,        _CN,                            _RY(display_info)) \
-	_X(RESOURCE_CREATE_2D,      _CY(resource_create_2d),        _RN) \
-	_X(RESOURCE_UNREF,          _CY(resource_unref),            _RN) \
-	_X(SET_SCANOUT,             _CY(set_scanout),               _RN) \
-	_X(RESOURCE_FLUSH,          _CY(resource_flush),            _RN) \
-	_X(TRANSFER_TO_HOST_2D,     _CY(transfer_to_host_2d),       _RN) \
-	_X(RESOURCE_ATTACH_BACKING, _CY(resource_attach_backing),   _RN) \
-	_X(RESOURCE_DETACH_BACKING, _CY(resource_detach_backing),   _RN) \
-	_X(GET_CAPSET_INFO,         _CY(get_capset_info),           _RY(capset_info)) \
-	_X(GET_CAPSET,              _CY(get_capset),                _RY(capset)) \
-	_X(RESOURCE_ASSIGN_UUID,    _CY(resource_assign_uuid),      _RY(resource_uuid)) \
+_X(GET_DISPLAY_INFO,        _CN,                          _RY(display_info)) \
+_X(RESOURCE_CREATE_2D,      _CY(resource_create_2d),      _RN) \
+_X(RESOURCE_UNREF,          _CY(resource_unref),          _RN) \
+_X(SET_SCANOUT,             _CY(set_scanout),             _RN) \
+_X(RESOURCE_FLUSH,          _CY(resource_flush),          _RN) \
+_X(TRANSFER_TO_HOST_2D,     _CY(transfer_to_host_2d),     _RN) \
+_X(RESOURCE_ATTACH_BACKING, _CY(resource_attach_backing), _RN) \
+_X(RESOURCE_DETACH_BACKING, _CY(resource_detach_backing), _RN) \
+_X(GET_CAPSET_INFO,         _CY(get_capset_info),         _RY(capset_info)) \
+_X(GET_CAPSET,              _CY(get_capset),              _RY(capset)) \
+_X(RESOURCE_ASSIGN_UUID,    _CY(resource_assign_uuid),    _RY(resource_uuid)) \
 \
-	/* 3d commands */ \
-	_X(CTX_CREATE,              _CY(ctx_create),                _RN) \
-	_X(CTX_DESTROY,             _CY(ctx_destroy),               _RN) \
-	_X(CTX_ATTACH_RESOURCE,     _CY(ctx_resource),              _RN) \
-	_X(CTX_DETACH_RESOURCE,     _CY(ctx_resource),              _RN) \
-	_X(RESOURCE_CREATE_3D,      _CY(resource_create_3d),        _RN) \
-	_X(TRANSFER_TO_HOST_3D,     _CY(transfer_host_3d),          _RN) \
-	_X(TRANSFER_FROM_HOST_3D,   _CY(transfer_host_3d),          _RN) \
-	_X(SUBMIT_3D,               _CY(cmd_submit),                _RN) \
+/* 3d commands */ \
+_X(CTX_CREATE,              _CY(ctx_create),              _RN) \
+_X(CTX_DESTROY,             _CY(ctx_destroy),             _RN) \
+_X(CTX_ATTACH_RESOURCE,     _CY(ctx_resource),            _RN) \
+_X(CTX_DETACH_RESOURCE,     _CY(ctx_resource),            _RN) \
+_X(RESOURCE_CREATE_3D,      _CY(resource_create_3d),      _RN) \
+_X(TRANSFER_TO_HOST_3D,     _CY(transfer_host_3d),        _RN) \
+_X(TRANSFER_FROM_HOST_3D,   _CY(transfer_host_3d),        _RN) \
+_X(SUBMIT_3D,               _CY(cmd_submit),              _RN) \
 \
-	/* Cursor commands */ \
-	_X(MOVE_CURSOR,             _CY(update_cursor),             _RN) \
-	_X(UPDATE_CURSOR,           _CY(update_cursor),             _RN)
+/* Cursor commands */ \
+_X(MOVE_CURSOR,             _CY(update_cursor),           _RN) \
+_X(UPDATE_CURSOR,           _CY(update_cursor),           _RN)
 
 #ifndef NDEBUG
 static const char *cmd_to_string(unsigned int type)
@@ -94,7 +93,7 @@ CMDDB
 #undef _RY
 #undef _RN
 
-static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
@@ -116,11 +115,22 @@ static unsigned int cmd_SUBMIT_3D(              struct virtio_gpu_cmd_submit *cm
 static unsigned int cmd_MOVE_CURSOR(            struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_UPDATE_CURSOR(          struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 
+static unsigned int cmd_GET_DISPLAY_INFO(struct virtio_gpu_ctrl_hdr *cmd, struct virtio_gpu_resp_display_info *resp)
+{
+	(void)cmd;
+
+	// FIXME: where should we get the size from?
+	resp->pmodes[0].r.height = 800;
+	resp->pmodes[0].r.height = 1200;
+	resp->pmodes[0].enabled = 1;
+	resp->hdr.type = VIRTIO_GPU_RESP_OK_DISPLAY_INFO;
+	return sizeof(*resp);
+}
+
 static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, struct virtio_gpu_resp_capset_info *resp)
 {
 	trace("index=%u", cmd->capset_index);
 
-	memset(resp, 0, sizeof(*resp));
 	if (cmd->capset_index == 0) {
 		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL;
 		trace();
@@ -146,9 +156,6 @@ static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, 
 
 	return sizeof(*resp);
 }
-
-// static unsigned int cmd_GET_CAPSET(struct virtio_gpu_get_capset *cmd, struct virtio_gpu_resp_capset *resp)
-// { (void)cmd; (void)resp; return 0; }
 
 // returns resp_len
 unsigned int virtio_request(struct vlo_buf *buf)
@@ -220,6 +227,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		trace("resp: can use iov_base");
 		resp = w[0].iov_base;
 	}
+	memset(resp, 0, ws);
 
 	switch(cmd_hdr->type) {
 #define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: resp_len = cmd_ ## n (cmd, resp); break;
