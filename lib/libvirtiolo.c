@@ -184,7 +184,7 @@ struct vlo *vlo_init(
 		.config_kick = ret->config_fd,/* __s32 IN */
 		.card_index = 0,              /* __s32 IN */
 		.padding = 0,                 /* __u32 IN */
-		.config = (uint8_t *)&config, /* __u8* IN/OUT */
+		.config = (uint8_t *)config,  /* __u8* IN/OUT */
 		.qinfo = qinfos,              /* struct virtio_lo_qinfo* IN/OUT */
 	};
 
@@ -400,8 +400,9 @@ int vlo_config_get(struct vlo *vl, void *config, unsigned int config_length)
 
 	struct virtio_lo_config cfg = {
 		.idx = vl->idx,
+		.offset = 0,
+		.len = vl->config_size,
 		.config = config,
-		.len = vl->config_size
 	};
 
 	trace("ioctl(VIRTIO_LO_GCONF)");
@@ -423,8 +424,9 @@ int vlo_config_set(struct vlo *vl, void *config, unsigned int config_length)
 
 	struct virtio_lo_config cfg = {
 		.idx = vl->idx,
+		.offset = 0,
+		.len = vl->config_size,
 		.config = config,
-		.len = vl->config_size
 	};
 
 	trace("ioctl(VIRTIO_LO_SCONF)");
