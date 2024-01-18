@@ -60,7 +60,7 @@ target_link_libraries(gtk_test PRIVATE ${extlibs_LIBRARIES} m)
 # test_virglrenderer
 #
 
-add_executable(test_virglrenderer test_virglrenderer.c virtio_thread.c epoll_scheduler.c virtio_request.c rvgpu-iov.c)
+add_executable(test_virglrenderer test_virglrenderer.c virtio_thread.c epoll_scheduler.c virtio_request.c iov.c)
 target_include_directories(test_virglrenderer PRIVATE ${virglrenderer_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_virglrenderer PRIVATE ${virglrenderer_LIBRARIES} virtiolo)
 

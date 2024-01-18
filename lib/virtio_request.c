@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 
 #include <virgl/virglrenderer.h>
@@ -11,7 +12,7 @@
 #include "virtio_thread.h"
 #include "libvirtiolo.h"
 #include "error.h"
-#include "rvgpu-iov.h"
+#include "iov.h"
 
 #define CMDDB \
 _X(GET_DISPLAY_INFO,        _CN,                          _RY(display_info)) \
@@ -82,10 +83,10 @@ CMDDB
 }
 
 // Prototypes
-#define _CY(t)        struct virtio_gpu_ ## t *cmd
-#define _CN           struct virtio_gpu_ctrl_hdr *cmd
-#define _RY(t)        struct virtio_gpu_resp_ ## t *resp
-#define _RN           struct virtio_gpu_ctrl_hdr *resp
+#define _CY(t) struct virtio_gpu_ ## t *cmd
+#define _CN struct virtio_gpu_ctrl_hdr *cmd
+#define _RY(t) struct virtio_gpu_resp_ ## t *resp
+#define _RN struct virtio_gpu_ctrl_hdr *resp
 
 #define _X(n, rt, wt) static unsigned int cmd_ ## n (rt, wt);
 CMDDB
@@ -117,6 +118,13 @@ static unsigned int cmd_TRANSFER_FROM_HOST_3D(  struct virtio_gpu_transfer_host_
 static unsigned int cmd_SUBMIT_3D(              struct virtio_gpu_cmd_submit *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_MOVE_CURSOR(            struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_UPDATE_CURSOR(          struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+
+// r - guest to device
+// w - device to guest
+static struct iovec *r;
+static struct iovec *w;
+static size_t nr;
+static size_t nw;
 
 static unsigned int cmd_GET_DISPLAY_INFO(struct virtio_gpu_ctrl_hdr *cmd, struct virtio_gpu_resp_display_info *resp)
 {
@@ -167,6 +175,14 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 	}
 
 	// FIXME: copy data
+	size_t mem_bytelen = sizeof(*mem) * cmd->nr_entries;
+	size_t mem_bytelen_fact = read_from_iovec(r, nr, sizeof(*cmd), mem, sizeof(*mem) * cmd->nr_entries);
+	if (mem_bytelen_fact != mem_bytelen) {
+		error("read_from_iovec()");
+		free(mem);
+		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+		goto done;
+	}
 
 	struct iovec *backing;
 	backing = calloc(cmd->nr_entries, sizeof(*backing));
@@ -240,12 +256,6 @@ unsigned int virtio_request(struct vlo_buf *buf)
 {
 	assert(buf);
 
-	// r - guest to device
-	// w - device to guest
-	struct iovec *r = buf->io;
-	struct iovec *w = buf->io + buf->ion_transmit;
-	size_t nr = buf->ion_transmit;
-	size_t nw = buf->ion - nr;
 	size_t copied;
 
 	unsigned char cmd_buf[1024];
@@ -256,6 +266,11 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	void *resp = &resp_buf;
 
 	unsigned int resp_len;
+
+	r = buf->io;
+	w = buf->io + buf->ion_transmit;
+	nr = buf->ion_transmit;
+	nw = buf->ion - nr;
 
 	if (nr < 1 || nw < 1) {
 		error("nr=%lu, nw=%lu", nr, nw);
@@ -272,7 +287,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		cmd_hdr = r[0].iov_base;
 	} else {
 		trace("header: have to copy");
-		copied = copy_from_iov(r, nr, cmd_hdr, sizeof(struct virtio_gpu_ctrl_hdr));
+		copied = read_from_iovec(r, nr, 0, cmd_hdr, sizeof(struct virtio_gpu_ctrl_hdr));
 		if (copied != sizeof(struct virtio_gpu_ctrl_hdr)) {
 			error("command buffer is too small (hdr)");
 			return 0;
@@ -294,7 +309,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		cmd = r[0].iov_base;
 	} else {
 		trace("cmd: have to copy");
-		copied = copy_from_iov(r, nr, cmd, rs);
+		copied = read_from_iovec(r, nr, 0, cmd, rs);
 		if (copied != rs) {
 			error("command buffer is too small (cmd)");
 			return 0;
@@ -318,7 +333,7 @@ CMDDB
 
 	if (resp == &resp_buf) {
 		trace("resp: have to copy back to iov");
-		copied = copy_to_iov(w, nw, resp, ws);
+		copied = write_to_iovec(w, nw, 0, resp, ws);
 		if (copied != ws) {
 			error("responce buffer is too small");
 			return 0;
