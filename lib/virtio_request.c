@@ -2,11 +2,13 @@
 
 #include <string.h>
 #include <assert.h>
+#include <sys/mman.h>
 
 #include <virgl/virglrenderer.h>
 
 #include <linux/virtio_gpu.h>
 
+#include "virtio_thread.h"
 #include "libvirtiolo.h"
 #include "error.h"
 #include "rvgpu-iov.h"
@@ -50,6 +52,7 @@ CMDDB
 }
 #endif
 
+// FIXME: implement one function instead of these two
 static unsigned int cmd_to_rsize(unsigned int type)
 {
 	switch (type) {
@@ -94,12 +97,12 @@ CMDDB
 #undef _RN
 
 // static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_host_2d *cmd,     struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
@@ -121,9 +124,84 @@ static unsigned int cmd_GET_DISPLAY_INFO(struct virtio_gpu_ctrl_hdr *cmd, struct
 
 	// FIXME: where should we get the size from?
 	resp->pmodes[0].r.height = 800;
-	resp->pmodes[0].r.height = 1200;
+	resp->pmodes[0].r.width = 1200;
 	resp->pmodes[0].enabled = 1;
+
+	trace("heigth=%u, width=%u", resp->pmodes[0].r.height, resp->pmodes[0].r.width);
+
 	resp->hdr.type = VIRTIO_GPU_RESP_OK_DISPLAY_INFO;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_CREATE_2D(struct virtio_gpu_resource_create_2d *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	struct virgl_renderer_resource_create_args args;
+
+	args.handle = cmd->resource_id;
+	args.target = 2;
+	args.format = cmd->format;
+	args.bind = (1 << 1);
+	args.width = cmd->width;
+	args.height = cmd->height;
+	args.depth = 1;
+	args.array_size = 1;
+	args.last_level = 0;
+	args.nr_samples = 0;
+	args.flags = VIRTIO_GPU_RESOURCE_FLAG_Y_0_TOP;
+	virgl_renderer_resource_create(&args, NULL, 0);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	unsigned int i;
+
+	struct virtio_gpu_mem_entry *mem;
+	mem = calloc(cmd->nr_entries, sizeof(*mem));
+	if (!mem) {
+		error("calloc(mem)");
+		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+		goto done;
+	}
+
+	// FIXME: copy data
+
+	struct iovec *backing;
+	backing = calloc(cmd->nr_entries, sizeof(*backing));
+	if (!backing) {
+		error("calloc(backing)");
+		free(mem);
+		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+		goto done;
+	}
+
+	for (i = 0; i < cmd->nr_entries; i++) {
+		void *b = virtio_thread_map_guest(mem[i].addr, PROT_READ | PROT_WRITE, mem[i].length);
+		if (!b) {
+			error("virtio_thread_map_guest()");
+			goto done_unmap;
+		}
+		backing[i].iov_base = b;
+		backing[i].iov_len = mem[i].length;
+	}
+
+	int err = virgl_renderer_resource_attach_iov(cmd->resource_id, backing, cmd->nr_entries);
+	if (err) {
+		error("virgl_renderer_resource_attach_iov()");
+		goto done_unmap;
+	}
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+
+done:
+	return sizeof(*resp);
+
+done_unmap:
+	for (unsigned int j = 0 ; j < i; j++)
+		virtio_thread_unmap_guest(backing[j].iov_base, backing[j].iov_len);
+	resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 	return sizeof(*resp);
 }
 

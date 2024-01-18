@@ -2,6 +2,8 @@
 #define __virtio_thread_h__
 
 #include <sys/queue.h>
+#include <stdint.h>
+#include <stddef.h>
 
 struct vlo_buf;
 
@@ -18,5 +20,8 @@ void virtio_thread_request_done(struct virtio_thread_request *req);
 
 int virtio_thread_start(unsigned int num_capsets);
 void virtio_thread_stop(void);
+
+void *virtio_thread_map_guest(uint64_t gpa, int prot, size_t size);
+void virtio_thread_unmap_guest(void *addr, size_t size);
 
 #endif

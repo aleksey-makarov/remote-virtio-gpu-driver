@@ -344,3 +344,17 @@ void virtio_thread_stop(void)
 
 	vlo_done(vlo);
 }
+
+/*
+ * These two will be called from another thread, but as they call mmap()
+ * of the driver, it looks like no mutex required.
+ */
+void *virtio_thread_map_guest(uint64_t gpa, int prot, size_t size)
+{
+	return vlo_map_guest(vlo, gpa, prot, size);
+}
+
+void virtio_thread_unmap_guest(void *addr, size_t size)
+{
+	vlo_unmap_guest(addr, size);
+}

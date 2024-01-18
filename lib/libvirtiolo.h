@@ -62,4 +62,7 @@ int vlo_config_set(struct vlo *vl, void *config, unsigned int config_length);
 int vlo_epoll_get_config(struct vlo *vl);
 int vlo_epoll_get_kick(struct vlo *vl, unsigned int queue);
 
+void *vlo_map_guest(struct vlo *vl, uint64_t gpa, int prot, size_t size);
+void vlo_unmap_guest(void *addr, size_t size);
+
 #endif

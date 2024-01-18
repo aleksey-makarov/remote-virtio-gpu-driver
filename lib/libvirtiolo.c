@@ -46,7 +46,7 @@ static inline uint64_t align_to_page_up(uint64_t a)
 	return align_to_page_down(a + 4095ull);
 }
 
-static void *map_guest(int fd, uint64_t gpa, int prot, size_t size)
+void *vlo_map_guest(struct vlo *vl, uint64_t gpa, int prot, size_t size)
 {
 	uint64_t realpa = align_to_page_down(gpa);
 	size_t realsize = align_to_page_up(gpa + size) - realpa;
@@ -54,7 +54,7 @@ static void *map_guest(int fd, uint64_t gpa, int prot, size_t size)
 
 	// trace("mapping %lu @ %lu", size, gpa);
 
-	ret = mmap(NULL, realsize, prot, MAP_SHARED, fd, (off_t)realpa);
+	ret = mmap(NULL, realsize, prot, MAP_SHARED, vl->fd, (off_t)realpa);
 	if (ret == MAP_FAILED)
 		return NULL;
 
@@ -62,7 +62,7 @@ static void *map_guest(int fd, uint64_t gpa, int prot, size_t size)
 	return ret;
 }
 
-static void unmap_guest(void *addr, size_t size)
+void vlo_unmap_guest(void *addr, size_t size)
 {
 	uintptr_t ai = (uintptr_t)addr;
 	uintptr_t realpa = align_to_page_down(ai);
@@ -77,17 +77,17 @@ static void unmap_guest(void *addr, size_t size)
 
 static void unmap_vring(struct vring *vr)
 {
-	unmap_guest(vr->desc,  SIZE_desc(vr->num));
-	unmap_guest(vr->avail, SIZE_avail(vr->num));
-	unmap_guest(vr->used,  SIZE_used(vr->num));
+	vlo_unmap_guest(vr->desc,  SIZE_desc(vr->num));
+	vlo_unmap_guest(vr->avail, SIZE_avail(vr->num));
+	vlo_unmap_guest(vr->used,  SIZE_used(vr->num));
 }
 
-static int map_vring(int fd, struct vring *vr, struct virtio_lo_qinfo *q)
+static int map_vring(struct vlo *vl, struct vring *vr, struct virtio_lo_qinfo *q)
 {
 
-	vr->desc  = map_guest(fd, q->desc,  PROT_READ,              SIZE_desc(vr->num));
-	vr->avail = map_guest(fd, q->avail, PROT_READ,              SIZE_avail(vr->num));
-	vr->used  = map_guest(fd, q->used,  PROT_READ | PROT_WRITE, SIZE_used(vr->num));
+	vr->desc  = vlo_map_guest(vl, q->desc,  PROT_READ,              SIZE_desc(vr->num));
+	vr->avail = vlo_map_guest(vl, q->avail, PROT_READ,              SIZE_avail(vr->num));
+	vr->used  = vlo_map_guest(vl, q->used,  PROT_READ | PROT_WRITE, SIZE_used(vr->num));
 	if (!vr->desc || !vr->avail || !vr->used) {
 		trace_err("%p %p %p", vr->desc, vr->avail, vr->used);
 		unmap_vring(vr);
@@ -104,7 +104,7 @@ static int map_vrings(struct vlo *vl, struct virtio_lo_qinfo *q)
 	for (i = 0; i < vl->vringsn; i++) {
 		struct vring *vr = &vl->vrings[i].vring;
 		vr->num = q->size;
-		if (map_vring(vl->fd, vr, q + i)) {
+		if (map_vring(vl, vr, q + i)) {
 			trace_err("error mapping ring %u", i);
 			goto error;
 		}
@@ -316,7 +316,7 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 		// trace("mapping %u@0x%llx for %s", di.len, di.addr, di.flags & VRING_DESC_F_WRITE ? "WRITE" : "READ");
 
 		req->io[i].iov_len = di.len;
-		req->io[i].iov_base = map_guest(vl->fd, di.addr, di.flags & VRING_DESC_F_WRITE ? (PROT_WRITE | PROT_READ) : PROT_READ, di.len);
+		req->io[i].iov_base = vlo_map_guest(vl, di.addr, di.flags & VRING_DESC_F_WRITE ? (PROT_WRITE | PROT_READ) : PROT_READ, di.len);
 		if (!req->io[i].iov_base) {
 			trace_err("map_guest()");
 			goto error;
@@ -333,7 +333,7 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 
 error:
 	for (j = 0; j < i; j++) {
-		unmap_guest(req->io[i].iov_base, req->io[i].iov_len);
+		vlo_unmap_guest(req->io[i].iov_base, req->io[i].iov_len);
 	}
 
 	free(req);
@@ -355,7 +355,7 @@ void vlo_buf_put(struct vlo_buf *req, unsigned int resp_len)
 	size_t i;
 
 	for (i = 0; i < req->ion; i++)
-		unmap_guest(req->io[i].iov_base, req->io[i].iov_len);
+		vlo_unmap_guest(req->io[i].iov_base, req->io[i].iov_len);
 
 	/* FIXME: Without this delay, kernel crashes in virtio-gpu driver
 	 * most probable cause is race condition.
