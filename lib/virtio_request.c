@@ -486,7 +486,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		}
 	}
 
-	trace("cmd=\"%s\"", cmd_to_string(cmd_hdr->type) ?: "???");
+	trace("%s%s", cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
 
 	unsigned int rs = cmd_to_rsize(cmd_hdr->type);
 	if (!rs) {
@@ -518,6 +518,13 @@ CMDDB
 	default:
 		resp_len = 0;
 		assert(0); // these sould be ruled out by cmd_to_?size()
+	}
+
+	if (cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE) {
+		// FIXME: reply only on command processing completion (?)
+		struct virtio_gpu_ctrl_hdr *resp_hdr = resp;
+		resp_hdr->flags |= VIRTIO_GPU_FLAG_FENCE;
+		resp_hdr->fence_id = cmd_hdr->fence_id;
 	}
 
 	if (resp == &resp_buf) {
