@@ -104,7 +104,7 @@ CMDDB
 // static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
    static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_host_2d *cmd,     struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
-   static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
    static unsigned int cmd_RESOURCE_ASSIGN_UUID(   struct virtio_gpu_resource_assign_uuid *cmd,    struct virtio_gpu_resp_resource_uuid *resp) { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
@@ -279,6 +279,23 @@ done_unmap:
 		virtio_thread_unmap_guest(mapped[j].iov_base, mapped[j].iov_len);
 	free(mapped);
 	resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	struct iovec *res_iovs = NULL;
+	int num_iovs = 0;
+
+	virgl_renderer_resource_detach_iov(cmd->resource_id, &res_iovs, &num_iovs);
+	if (res_iovs && num_iovs > 0) {
+		for (int i = 0; i < num_iovs; i++) {
+			virtio_thread_unmap_guest(res_iovs[i].iov_base, res_iovs[i].iov_len);
+		}
+		free(res_iovs);
+	}
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
 	return sizeof(*resp);
 }
 
