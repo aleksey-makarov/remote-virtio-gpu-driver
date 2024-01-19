@@ -135,7 +135,7 @@ static unsigned int cmd_GET_DISPLAY_INFO(struct virtio_gpu_ctrl_hdr *cmd, struct
 	resp->pmodes[0].r.width = 1200;
 	resp->pmodes[0].enabled = 1;
 
-	trace("heigth=%u, width=%u", resp->pmodes[0].r.height, resp->pmodes[0].r.width);
+	// trace("heigth=%u, width=%u", resp->pmodes[0].r.height, resp->pmodes[0].r.width);
 
 	resp->hdr.type = VIRTIO_GPU_RESP_OK_DISPLAY_INFO;
 	return sizeof(*resp);
@@ -223,30 +223,25 @@ done_unmap:
 
 static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, struct virtio_gpu_resp_capset_info *resp)
 {
-	trace("index=%u", cmd->capset_index);
+	// trace("index=%u", cmd->capset_index);
 
 	if (cmd->capset_index == 0) {
 		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL;
-		trace();
 		virgl_renderer_get_cap_set(resp->capset_id,
 		                           &resp->capset_max_version,
 		                           &resp->capset_max_size);
-		trace();
 	} else if (cmd->capset_index == 1) {
 		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL2;
-		trace();
 		virgl_renderer_get_cap_set(resp->capset_id,
 		                           &resp->capset_max_version,
 		                           &resp->capset_max_size);
-		trace();
 	} else {
-		trace();
 		resp->capset_max_version = 0;
 		resp->capset_max_size = 0;
 	}
 	resp->hdr.type = VIRTIO_GPU_RESP_OK_CAPSET_INFO;
 
-	trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
+	// trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
 
 	return sizeof(*resp);
 }
@@ -315,7 +310,6 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	// FIXME: check mapping (readonly, writeonly)
 
 	if (r[0].iov_len >= sizeof(struct virtio_gpu_ctrl_hdr)) {
-		trace("header: can use iov_base");
 		cmd_hdr = r[0].iov_base;
 	} else {
 		trace("header: have to copy");
@@ -337,7 +331,6 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	assert(ws); // zeroes should be excluded by cmd_to_rsize()
 
 	if (rs == sizeof(struct virtio_gpu_ctrl_hdr) || r[0].iov_len >= rs) {
-		trace("cmd: can use iov_base");
 		cmd = r[0].iov_base;
 	} else {
 		trace("cmd: have to copy");
@@ -348,10 +341,8 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		}
 	}
 
-	if (w[0].iov_len >= ws) {
-		trace("resp: can use iov_base");
+	if (w[0].iov_len >= ws)
 		resp = w[0].iov_base;
-	}
 	memset(resp, 0, ws);
 
 	switch(cmd_hdr->type) {
@@ -374,4 +365,3 @@ CMDDB
 
 	return resp_len;
 }
-

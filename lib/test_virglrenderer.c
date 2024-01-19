@@ -127,7 +127,7 @@ static int notify_go(struct es_thread *self, uint32_t events)
 		struct virtio_thread_request *req = STAILQ_FIRST(&tmp_queue);
 		STAILQ_REMOVE_HEAD(&tmp_queue, queue_entry);
 
-		trace("(3) %d put %d", req->serial, gettid());
+		// trace("(3) %d put %d", req->serial, gettid());
 
 		req->resp_len = virtio_request(req->buf);
 		virtio_thread_request_done(req);
@@ -147,7 +147,7 @@ static struct es_thread notify_thread = {
 // called from the helper thread
 void virtio_thread_new_request(struct virtio_thread_request *req)
 {
-	trace("(2) %d put %d", req->serial, gettid());
+	// trace("(2) %d put %d", req->serial, gettid());
 
 	pthread_mutex_lock(&req_queue_mutex);
 	STAILQ_INSERT_TAIL(&req_queue, req, queue_entry);

@@ -50,7 +50,7 @@ static struct es_thread notify_thread;
 void virtio_thread_request_done(struct virtio_thread_request *req)
 {
 	assert(req);
-	trace("(4) %d on %d", req->serial, gettid());
+	// trace("(4) %d on %d", req->serial, gettid());
 
 	pthread_mutex_lock(&req_queue_mutex);
 	STAILQ_INSERT_TAIL(&req_queue, req, queue_entry);
@@ -101,8 +101,8 @@ static int config_go(struct es_thread *self, uint32_t events)
 		goto out;
 	}
 
-	trace("config: events_read=0x%08x, events_clear=0x%08x, num_scanouts=%u, num_capsets=%u",
-		c.events_read, c.events_clear, c.num_scanouts, c.num_capsets);
+	// trace("config: events_read=0x%08x, events_clear=0x%08x, num_scanouts=%u, num_capsets=%u",
+	// 	c.events_read, c.events_clear, c.num_scanouts, c.num_capsets);
 
 	if (c.events_clear) {
 		config.events_read &= ~c.events_clear;
@@ -116,7 +116,7 @@ static int config_go(struct es_thread *self, uint32_t events)
 	}
 
 out:
-	trace();
+	// trace();
 	return 0;
 }
 
@@ -132,7 +132,7 @@ static int notify_go(struct es_thread *self, uint32_t events)
 
 	assert(vlo);
 
-	trace();
+	// trace();
 
 	err = eventfd_read(self->fd, &ev);
 	// FIXME: EAGAIN?
@@ -150,7 +150,7 @@ static int notify_go(struct es_thread *self, uint32_t events)
 		struct virtio_thread_request *req = STAILQ_FIRST(&tmp_queue);
 		STAILQ_REMOVE_HEAD(&tmp_queue, queue_entry);
 
-		trace("(5) %d put %d", req->serial, gettid());
+		// trace("(5) %d put %d", req->serial, gettid());
 
 		if (req->queue == 0)
 			kick0 = true;
@@ -214,12 +214,12 @@ static int queue_go(struct es_thread *self, uint32_t events)
 		req->queue = queue;
 		req->serial = serial++;
 
-		trace("(1) %d on %d", req->serial, gettid());
+		// trace("(1) %d on %d", req->serial, gettid());
 
 		virtio_thread_new_request(req);
 	}
 
-	trace();
+	// trace();
 out:
 	return 0;
 }
@@ -335,7 +335,7 @@ err:
 
 void virtio_thread_stop(void)
 {
-	trace("");
+	// trace("");
 	done = true;
 	int err = eventfd_write(notify_thread.fd, 1);
 	if (err)
