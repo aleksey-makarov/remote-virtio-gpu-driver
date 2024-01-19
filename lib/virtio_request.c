@@ -99,9 +99,9 @@ CMDDB
 
 // static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
-   static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
-   static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
-   static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
    static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_host_2d *cmd,     struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
    static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
@@ -158,6 +158,61 @@ static unsigned int cmd_RESOURCE_CREATE_2D(struct virtio_gpu_resource_create_2d 
 	args.flags = VIRTIO_GPU_RESOURCE_FLAG_Y_0_TOP;
 	virgl_renderer_resource_create(&args, NULL, 0);
 
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_UNREF(struct virtio_gpu_resource_unref *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	struct iovec *res_iovs = NULL;
+	int num_iovs = 0;
+
+	virgl_renderer_resource_detach_iov(cmd->resource_id, &res_iovs, &num_iovs);
+	if (res_iovs != NULL && num_iovs > 0) {
+		for (int i = 0; i < num_iovs; i++) {
+			virtio_thread_unmap_guest(res_iovs[i].iov_base, res_iovs[i].iov_len);
+		}
+		free(res_iovs);
+	}
+	virgl_renderer_resource_unref(cmd->resource_id);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_SET_SCANOUT(struct virtio_gpu_set_scanout *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	// FIXME: pretend we have just 1 scanout right now
+	if (cmd->scanout_id >= 1) {
+		error("scanout_id=%u", cmd->scanout_id);
+		resp->type = VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID;
+		goto out;
+	}
+
+	if (!cmd->resource_id || !cmd->r.width || !cmd->r.height) {
+		trace("FIXME: hide window: resource_id=%u, width=%u, heigth=%u", cmd->resource_id, cmd->r.width, cmd->r.height);
+		resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+		goto out;
+	}
+
+	struct virgl_renderer_resource_info info;
+	int ret = virgl_renderer_resource_get_info(cmd->resource_id, &info);
+	if (ret == -1) {
+		error("virgl_renderer_resource_get_info(resource_id=%u)", cmd->resource_id);
+		resp->type = VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID;
+		goto out;
+	}
+
+	trace("FIXME: set window: resource=%ux%u, box=%ux%u@%u,%u", info.width, info.height, cmd->r.width, cmd->r.height, cmd->r.x, cmd->r.y);
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+
+out:
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_FLUSH(struct virtio_gpu_resource_flush *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	trace("FIXME: flush: resource_id=%u, box=%ux%u@%u,%u", cmd->resource_id, cmd->r.width, cmd->r.height, cmd->r.x, cmd->r.y);
 	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
 	return sizeof(*resp);
 }
@@ -254,9 +309,6 @@ static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, 
 
 static unsigned int cmd_GET_CAPSET(struct virtio_gpu_get_capset *cmd, struct virtio_gpu_resp_capset *resp)
 {
-	// struct virtio_gpu_get_capset gc;
-	// struct virtio_gpu_resp_capset *resp;
-
 	uint32_t max_ver, max_size;
 
 	virgl_renderer_get_cap_set(cmd->capset_id, &max_ver, &max_size);
