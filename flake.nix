@@ -64,11 +64,13 @@
           virglrenderer = self.virglrenderer-debug;
         };
 
-      virglrenderer-debug = (virglrenderer-debug-flake.overlays.default self super).virglrenderer;
+      # virglrenderer-debug = (virglrenderer-debug-flake.overlays.default self super).virglrenderer;
 
       # virglrenderer-debug = super.virglrenderer.overrideAttrs (_: _: {
       #   mesonFlags = ["-Dtracing=stderr"];
       # });
+
+      virglrenderer-debug = super.virglrenderer;
 
       uhmitest = uhmitest.packages.${system}.uhmitest;
     };
