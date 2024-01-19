@@ -24,6 +24,12 @@
       inputs.flake-utils.follows = "flake-utils";
       inputs.nixGL.follows = "nixGL";
     };
+    uhmitest = {
+      url = "github:aleksey-makarov/uhmitest";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.nix-vscode-extensions.follows = "nix-vscode-extensions";
+    };
   };
 
   outputs = {
@@ -33,6 +39,7 @@
     nixGL,
     nix-vscode-extensions,
     virglrenderer-debug-flake,
+    uhmitest,
   }: let
     system = "x86_64-linux";
 
@@ -64,6 +71,8 @@
       # });
 
       virglrenderer-debug = super.virglrenderer;
+
+      uhmitest = uhmitest.packages.${system}.uhmitest;
     };
 
     pkgs = (nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay;

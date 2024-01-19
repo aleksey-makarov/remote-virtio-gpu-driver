@@ -132,6 +132,7 @@ with lib; {
       ffmpeg_6-full
 
       libvirtiolo-debug
+      uhmitest
     ];
 
     users.mutableUsers = false;
