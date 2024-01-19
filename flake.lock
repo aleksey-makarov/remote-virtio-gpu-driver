@@ -103,6 +103,7 @@
         "nix-vscode-extensions": "nix-vscode-extensions",
         "nixGL": "nixGL",
         "nixpkgs": "nixpkgs",
+        "uhmitest": "uhmitest",
         "virglrenderer-debug-flake": "virglrenderer-debug-flake"
       }
     },
@@ -118,6 +119,32 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "uhmitest": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nix-vscode-extensions": [
+          "nix-vscode-extensions"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1693402911,
+        "narHash": "sha256-/jIlG4LJxoSmngce/pRkgkaK6ZW2E4uNaexvrnDfXfQ=",
+        "owner": "aleksey-makarov",
+        "repo": "uhmitest",
+        "rev": "e7672e91c3f345cba696a7b8cf6131c8860e474c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "aleksey-makarov",
+        "repo": "uhmitest",
         "type": "github"
       }
     },
