@@ -108,10 +108,10 @@ static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detac
 // static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_ASSIGN_UUID(   struct virtio_gpu_resource_assign_uuid *cmd,    struct virtio_gpu_resp_resource_uuid *resp) { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_CTX_CREATE(             struct virtio_gpu_ctx_create *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_CTX_DESTROY(            struct virtio_gpu_ctx_destroy *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_CTX_ATTACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_CTX_DETACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_CREATE(             struct virtio_gpu_ctx_create *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_DESTROY(            struct virtio_gpu_ctx_destroy *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_ATTACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_DETACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_CREATE_3D(     struct virtio_gpu_resource_create_3d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_TRANSFER_TO_HOST_3D(    struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_TRANSFER_FROM_HOST_3D(  struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
@@ -248,6 +248,38 @@ static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, 
 
 	trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
 
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_CTX_CREATE(struct virtio_gpu_ctx_create *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	virgl_renderer_context_create(cmd->hdr.ctx_id, cmd->nlen, cmd->debug_name);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_CTX_DESTROY(struct virtio_gpu_ctx_destroy *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	virgl_renderer_context_destroy(cmd->hdr.ctx_id);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_CTX_ATTACH_RESOURCE(struct virtio_gpu_ctx_resource *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	virgl_renderer_ctx_attach_resource(cmd->hdr.ctx_id, cmd->resource_id);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_CTX_DETACH_RESOURCE(struct virtio_gpu_ctx_resource *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	virgl_renderer_ctx_detach_resource(cmd->hdr.ctx_id, cmd->resource_id);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
 	return sizeof(*resp);
 }
 
