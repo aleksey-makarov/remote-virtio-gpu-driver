@@ -97,27 +97,27 @@ CMDDB
 #undef _RY
 #undef _RN
 
-// static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_host_2d *cmd,     struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_ASSIGN_UUID(   struct virtio_gpu_resource_assign_uuid *cmd,    struct virtio_gpu_resp_resource_uuid *resp) { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_CTX_CREATE(             struct virtio_gpu_ctx_create *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_CTX_DESTROY(            struct virtio_gpu_ctx_destroy *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_CTX_ATTACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-// static unsigned int cmd_CTX_DETACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_RESOURCE_CREATE_3D(     struct virtio_gpu_resource_create_3d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_TRANSFER_TO_HOST_3D(    struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_TRANSFER_FROM_HOST_3D(  struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_SUBMIT_3D(              struct virtio_gpu_cmd_submit *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_MOVE_CURSOR(            struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_UPDATE_CURSOR(          struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_GET_DISPLAY_INFO(       struct virtio_gpu_ctrl_hdr *cmd,                struct virtio_gpu_resp_display_info *resp)  { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_CREATE_2D(     struct virtio_gpu_resource_create_2d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_RESOURCE_UNREF(         struct virtio_gpu_resource_unref *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_SET_SCANOUT(            struct virtio_gpu_set_scanout *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_RESOURCE_FLUSH(         struct virtio_gpu_resource_flush *cmd,          struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_host_2d *cmd,     struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_RESOURCE_ASSIGN_UUID(   struct virtio_gpu_resource_assign_uuid *cmd,    struct virtio_gpu_resp_resource_uuid *resp) { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_CREATE(             struct virtio_gpu_ctx_create *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_DESTROY(            struct virtio_gpu_ctx_destroy *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_ATTACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_CTX_DETACH_RESOURCE(    struct virtio_gpu_ctx_resource *cmd,            struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_RESOURCE_CREATE_3D(     struct virtio_gpu_resource_create_3d *cmd,      struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_TRANSFER_TO_HOST_3D(    struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_TRANSFER_FROM_HOST_3D(  struct virtio_gpu_transfer_host_3d *cmd,        struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_SUBMIT_3D(              struct virtio_gpu_cmd_submit *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_MOVE_CURSOR(            struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
+   static unsigned int cmd_UPDATE_CURSOR(          struct virtio_gpu_update_cursor *cmd,           struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; error("NOT IMPLEMENTED"); return 0; }
 
 // r - guest to device
 // w - device to guest
@@ -325,6 +325,53 @@ static unsigned int cmd_CTX_DETACH_RESOURCE(struct virtio_gpu_ctx_resource *cmd,
 	virgl_renderer_ctx_detach_resource(cmd->hdr.ctx_id, cmd->resource_id);
 
 	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_CREATE_3D(struct virtio_gpu_resource_create_3d *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	struct virgl_renderer_resource_create_args args;
+
+	args.handle = cmd->resource_id;
+	args.target = cmd->target;
+	args.format = cmd->format;
+	args.bind = cmd->bind;
+	args.width = cmd->width;
+	args.height = cmd->height;
+	args.depth = cmd->depth;
+	args.array_size = cmd->array_size;
+	args.last_level = cmd->last_level;
+	args.nr_samples = cmd->nr_samples;
+	args.flags = cmd->flags;
+	virgl_renderer_resource_create(&args, NULL, 0);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+	return sizeof(*resp);
+}
+
+static unsigned int cmd_SUBMIT_3D(struct virtio_gpu_cmd_submit *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	void *buf = malloc(cmd->size);
+	if (!buf) {
+		error("malloc()");
+		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+		goto out;
+	}
+
+	size_t s = read_from_iovec(r, nr, sizeof(*cmd), buf, cmd->size);
+	if (s != cmd->size) {
+		error("read_from_ioved(%u): %lu", cmd->size, s);
+		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+		goto out_free;
+	}
+
+	virgl_renderer_submit_cmd(buf, cmd->hdr.ctx_id, cmd->size / 4);
+
+	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
+
+out_free:
+	free(buf);
+out:
 	return sizeof(*resp);
 }
 
