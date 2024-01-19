@@ -106,7 +106,7 @@ static unsigned int cmd_TRANSFER_TO_HOST_2D(    struct virtio_gpu_transfer_to_ho
 // static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detach_backing *cmd, struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_GET_CAPSET_INFO(        struct virtio_gpu_get_capset_info *cmd,         struct virtio_gpu_resp_capset_info *resp)   { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
-static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
+// static unsigned int cmd_GET_CAPSET(             struct virtio_gpu_get_capset *cmd,              struct virtio_gpu_resp_capset *resp)        { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 static unsigned int cmd_RESOURCE_ASSIGN_UUID(   struct virtio_gpu_resource_assign_uuid *cmd,    struct virtio_gpu_resp_resource_uuid *resp) { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_CTX_CREATE(             struct virtio_gpu_ctx_create *cmd,              struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
 // static unsigned int cmd_CTX_DESTROY(            struct virtio_gpu_ctx_destroy *cmd,             struct virtio_gpu_ctrl_hdr *resp)           { (void)cmd; (void)resp; trace("NOT IMPLEMENTED"); return 0; }
@@ -166,6 +166,8 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 {
 	unsigned int i;
 
+	trace("nr_entries=%u", cmd->nr_entries);
+
 	struct virtio_gpu_mem_entry *mem;
 	mem = calloc(cmd->nr_entries, sizeof(*mem));
 	if (!mem) {
@@ -174,19 +176,18 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 		goto done;
 	}
 
-	// FIXME: copy data
 	size_t mem_bytelen = sizeof(*mem) * cmd->nr_entries;
-	size_t mem_bytelen_fact = read_from_iovec(r, nr, sizeof(*cmd), mem, sizeof(*mem) * cmd->nr_entries);
-	if (mem_bytelen_fact != mem_bytelen) {
+	size_t mem_bytelen_read = read_from_iovec(r, nr, sizeof(*cmd), mem, sizeof(*mem) * cmd->nr_entries);
+	if (mem_bytelen_read != mem_bytelen) {
 		error("read_from_iovec()");
 		free(mem);
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto done;
 	}
 
-	struct iovec *backing;
-	backing = calloc(cmd->nr_entries, sizeof(*backing));
-	if (!backing) {
+	struct iovec *mapped;
+	mapped = calloc(cmd->nr_entries, sizeof(*mapped));
+	if (!mapped) {
 		error("calloc(backing)");
 		free(mem);
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
@@ -194,16 +195,20 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 	}
 
 	for (i = 0; i < cmd->nr_entries; i++) {
+		// trace("%2u mmap(0x%08u@0x%016llu)", i, mem[i].length, mem[i].addr);
 		void *b = virtio_thread_map_guest(mem[i].addr, PROT_READ | PROT_WRITE, mem[i].length);
 		if (!b) {
 			error("virtio_thread_map_guest()");
+			free(mem);
 			goto done_unmap;
 		}
-		backing[i].iov_base = b;
-		backing[i].iov_len = mem[i].length;
+		mapped[i].iov_base = b;
+		mapped[i].iov_len = mem[i].length;
 	}
 
-	int err = virgl_renderer_resource_attach_iov(cmd->resource_id, backing, cmd->nr_entries);
+	free(mem);
+
+	int err = virgl_renderer_resource_attach_iov(cmd->resource_id, mapped, cmd->nr_entries);
 	if (err) {
 		error("virgl_renderer_resource_attach_iov()");
 		goto done_unmap;
@@ -216,7 +221,8 @@ done:
 
 done_unmap:
 	for (unsigned int j = 0 ; j < i; j++)
-		virtio_thread_unmap_guest(backing[j].iov_base, backing[j].iov_len);
+		virtio_thread_unmap_guest(mapped[j].iov_base, mapped[j].iov_len);
+	free(mapped);
 	resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 	return sizeof(*resp);
 }
@@ -244,6 +250,50 @@ static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, 
 	// trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
 
 	return sizeof(*resp);
+}
+
+static unsigned int cmd_GET_CAPSET(struct virtio_gpu_get_capset *cmd, struct virtio_gpu_resp_capset *resp)
+{
+	// struct virtio_gpu_get_capset gc;
+	// struct virtio_gpu_resp_capset *resp;
+
+	uint32_t max_ver, max_size;
+
+	virgl_renderer_get_cap_set(cmd->capset_id, &max_ver, &max_size);
+	if (!max_size) {
+		error("virgl_renderer_get_cap_set(%u)", cmd->capset_id);
+		resp->hdr.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
+		goto err;
+	}
+
+	if (cmd->capset_version > max_ver) {
+		error("requested version %u, max versioin is %u", cmd->capset_version, max_ver);
+		resp->hdr.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
+		goto err;
+	}
+
+	void *capset_data = malloc(max_size);
+	if (!capset_data) {
+		error("malloc()");
+		resp->hdr.type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
+		goto err;
+	}
+
+	virgl_renderer_fill_caps(cmd->capset_id, cmd->capset_version, capset_data);
+
+	size_t size_written = write_to_iovec(w, nw, sizeof(struct virtio_gpu_ctrl_hdr), capset_data, max_size);
+	free(capset_data);
+	if (size_written != max_size) {
+		error("write_to_iovec(%u): %lu", max_size, size_written);
+		resp->hdr.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
+		goto err;
+	}
+
+	resp->hdr.type = VIRTIO_GPU_RESP_OK_CAPSET;
+	return sizeof(*resp);
+
+err:
+	return sizeof(resp->hdr);
 }
 
 static unsigned int cmd_CTX_CREATE(struct virtio_gpu_ctx_create *cmd, struct virtio_gpu_ctrl_hdr *resp)
