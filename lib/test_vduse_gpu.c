@@ -10,9 +10,7 @@
 
 #include "libvduse.h"
 #include "epoll_scheduler.h"
-
-#define TRACE_FILE "test_vduse_gpu.c"
-#include "trace.h"
+#include "merr.h"
 
 #define DRIVER_NAME "test_gpu"
 #define QUEUE_SIZE 16
@@ -55,7 +53,7 @@ static int dev_go(struct es_thread *self, uint32_t events)
 
 	int err = vduse_dev_handler(dev);
 	if (err < 0) {
-		trace_err("vduse_dev_handler()");
+		merr("vduse_dev_handler()");
 		return err;
 	}
 
@@ -82,7 +80,7 @@ static int cmd_go(struct es_thread *self, uint32_t events)
 	eventfd_t ev;
 	int ret = eventfd_read(self->fd, &ev);
 	if (ret < 0) {
-		trace_err("eventfd_read()");
+		merr("eventfd_read()");
 		return -1;
 	}
 
@@ -91,7 +89,7 @@ static int cmd_go(struct es_thread *self, uint32_t events)
 		if (!req)
 			break;
 
-		trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
+		merr("out_num=%u, in_num=%u", req->out_num, req->in_num);
 
 		vduse_queue_push(q->vq, req, 0);
 		free(req);
@@ -122,7 +120,7 @@ static int cursor_go(struct es_thread *self, uint32_t events)
 	eventfd_t ev;
 	int ret = eventfd_read(self->fd, &ev);
 	if (ret < 0) {
-		trace_err("eventfd_read()");
+		merr("eventfd_read()");
 		return -1;
 	}
 
@@ -131,7 +129,7 @@ static int cursor_go(struct es_thread *self, uint32_t events)
 		if (!req)
 			break;
 
-		trace_err("out_num=%u, in_num=%u", req->out_num, req->in_num);
+		merr("out_num=%u, in_num=%u", req->out_num, req->in_num);
 
 		vduse_queue_push(q->vq, req, 0);
 		free(req);
@@ -160,7 +158,7 @@ static int timer_go(struct es_thread *self, uint32_t events)
 	eventfd_t ev;
 	int ret = eventfd_read(self->fd, &ev);
 	if (ret < 0) {
-		trace_err("eventfd_read()");
+		merr("eventfd_read()");
 		return -1;
 	}
 
@@ -214,7 +212,7 @@ static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
 	int index = vduse_queue_get_index(vq);
 
 	if (index < 0 || QUEUE_MAX <= index) {
-		trace_err("index == %d", index);
+		merr("index == %d", index);
 		return;
 	}
 
@@ -228,7 +226,7 @@ static void test_enable_queue(VduseDev *dev, VduseVirtq *vq)
 
 	int err = es_add(es, &q->thread);
 	if (err)
-		trace_err("es_add(\"%s\")", q->thread.name);
+		merr("es_add(\"%s\")", q->thread.name);
 }
 
 static void test_disable_queue(VduseDev *dev, VduseVirtq *vq)
@@ -238,7 +236,7 @@ static void test_disable_queue(VduseDev *dev, VduseVirtq *vq)
 	int index = vduse_queue_get_index(vq);
 
 	if (index < 0 || QUEUE_MAX <= index) {
-		trace_err("index == %d", index);
+		merr("index == %d", index);
 		return;
 	}
 
@@ -277,7 +275,7 @@ int main(int argc, char **argv)
 					 driver_features, QUEUE_MAX,
 					 sizeof(struct virtio_gpu_config), (char *)&dev_cfg, &ops, NULL);
 	if (!dev) {
-		trace_err("vduse_dev_create()");
+		merr("vduse_dev_create()");
 		goto error;
 	}
 	dev_thread.fd = vduse_dev_get_fd(dev);
@@ -285,14 +283,14 @@ int main(int argc, char **argv)
 
 	err = vduse_set_reconnect_log_file(dev, "/tmp/vduse-" DRIVER_NAME ".log");
 	if (err) {
-		trace_err("vduse_set_reconnect_log_file()");
+		merr("vduse_set_reconnect_log_file()");
 		goto error_dev_destroy;
 	}
 
 	for (int i = 0; i < QUEUE_MAX; i++) {
 		err = vduse_dev_setup_queue(dev, i, QUEUE_SIZE);
 		if (err) {
-			trace_err("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
+			merr("vduse_dev_setup_queue(%d, %d)", i, QUEUE_SIZE);
 			goto error_dev_destroy;
 		}
 	}
@@ -301,7 +299,7 @@ int main(int argc, char **argv)
 
 	err = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 	if (err < 0) {
-		trace_err_p("timerfd_create()");
+		merr_errno("timerfd_create()");
 		goto error_dev_destroy;
 	}
 	timer_thread.fd = err;
@@ -319,7 +317,7 @@ int main(int argc, char **argv)
 
 	err = timerfd_settime(timer_thread.fd, 0, &t, NULL);
 	if (err < 0) {
-		trace_err_p("timerfd_settime()");
+		merr_errno("timerfd_settime()");
 		goto error_close_timer_fd;
 	}
 
@@ -330,13 +328,13 @@ int main(int argc, char **argv)
 		&timer_thread,
 		NULL);
 	if (!es) {
-		trace_err("es_init()");
+		merr("es_init()");
 		goto error_close_timer_fd;
 	}
 
 	err = es_schedule(es);
 	if (err < 0) {
-		trace_err("es_schedule()");
+		merr("es_schedule()");
 		goto error_close_timer_fd;
 	}
 
@@ -353,6 +351,6 @@ error_close_timer_fd:
 error_dev_destroy:
 	vduse_dev_destroy(dev);
 error:
-	trace_err("exit failure");
+	merr("exit failure");
 	exit(EXIT_FAILURE);
 }

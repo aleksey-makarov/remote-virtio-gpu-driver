@@ -16,7 +16,7 @@
 #include "epoll_scheduler.h"
 #include "virtio_thread.h"
 #include "virtio_request.h"
-#include "error.h"
+#include "merr.h"
 
 static const char *drm_device = "/dev/dri/card0";
 static int drm_device_fd;
@@ -115,7 +115,7 @@ static int notify_go(struct es_thread *self, uint32_t events)
 
 	err = eventfd_read(self->fd, &ev);
 	if (err < 0) {
-		error("eventfd_read()");
+		merr("eventfd_read()");
 		goto out;
 	}
 
@@ -155,7 +155,7 @@ void virtio_thread_new_request(struct virtio_thread_request *req)
 
 	int err = eventfd_write(notify_thread.fd, 1);
 	if (err < 0)
-		error_errno("eventfd_write()");
+		merr_errno("eventfd_write()");
 }
 
 static unsigned int get_num_capsets(void)
@@ -172,7 +172,7 @@ int main(int argc, char **argv)
 
 	notify_thread.fd = eventfd(0, EFD_NONBLOCK);
 	if (notify_thread.fd < 0) {
-		error_errno("eventfd()");
+		merr_errno("eventfd()");
 		goto err;
 	}
 
@@ -182,7 +182,7 @@ int main(int argc, char **argv)
 	trace("open(\"%s\")", drm_device);
 	drm_device_fd = open(drm_device, O_RDWR);
 	if (drm_device_fd < 0) {
-		error_errno("open(\"%s\")", drm_device);
+		merr_errno("open(\"%s\")", drm_device);
 		goto err_close_efd;
 	}
 
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
 	// For some reason cookie can not be NULL
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
-		error("virgl_renderer_init(): %s", strerror(err));
+		merr("virgl_renderer_init(): %s", strerror(err));
 		goto err_close_drm;
 	}
 
@@ -200,7 +200,7 @@ int main(int argc, char **argv)
 
 	err = virtio_thread_start(num_capsets);
 	if (err) {
-		error("virtio_thread_start()");
+		merr("virtio_thread_start()");
 		goto err_virgl_cleanup;
 	}
 
@@ -208,13 +208,13 @@ int main(int argc, char **argv)
 		&notify_thread,
 		NULL);
 	if (!es) {
-		error("es_init()");
+		merr("es_init()");
 		goto err_stop_virtio_thread;
 	}
 
 	err = es_schedule(es);
 	if (err < 0) {
-		error("es_schedule()");
+		merr("es_schedule()");
 		goto err_stop_virtio_thread;
 	}
 

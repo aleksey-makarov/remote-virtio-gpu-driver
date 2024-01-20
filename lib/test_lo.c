@@ -3,15 +3,14 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <assert.h>
+#include <errno.h>
 
 #include <linux/virtio_test.h>
 
 #include "libvirtiolo.h"
 #include "epoll_scheduler.h"
 #include "device.h"
-
-#define TRACE_FILE "test.c"
-#include "trace.h"
+#include "merr.h"
 
 #if 0
 
@@ -35,12 +34,12 @@ static int readfd_uint64(int fd)
 
 	ret = read(fd, &ev, sizeof(ev));
 	if (ret >= 0 && ret != sizeof(ev)) {
-		trace_err("read(): wrong size");
+		merr("read(): wrong size");
 		return -1;
 	} else if (ret < 0) {
 		if (errno == EAGAIN)
 			return 0;
-		trace_err_p("read() (errno=%d)", errno);
+		merr_errno("read() (errno=%d)", errno);
 		return -1;
 	}
 
@@ -88,7 +87,7 @@ static enum es_test_result rx_test(struct es_thread *self)
 
 	ret = readfd_uint64(rx_thread.fd);
 	if (ret < 0) {
-		trace_err("readfd_uint64()");
+		merr("readfd_uint64()");
 		return -1;
 	}
 
@@ -111,7 +110,7 @@ static int rx_go(struct es_thread *self, uint32_t events)
 	int ret = 0;
 	unsigned int len = 0;
 
-	// trace_err("events=0x%x", events);
+	// merr("events=0x%x", events);
 
 	// assert(vlo_buf_is_available(ctxt.vl, VIRTIO_TEST_QUEUE_RX));
 
@@ -127,20 +126,20 @@ static int rx_go(struct es_thread *self, uint32_t events)
 	}
 
 	if (bad0 || bad1) {
-		trace_err("vlo_buf_is_available(RX), bad0=%u, bad1=%u", bad0, bad1);
+		merr("vlo_buf_is_available(RX), bad0=%u, bad1=%u", bad0, bad1);
 		bad0 = bad1 = 0;
 	}
 
 	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_RX);
 	if (!req) {
-		trace_err("vlo_buf_get()");
+		merr("vlo_buf_get()");
 		return -1;
 	}
 
 	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
 
 	if (req->ion_transmit != 0) {
-		trace_err("not all buffers are readable");
+		merr("not all buffers are readable");
 		ret = -1;
 		goto done;
 	}
@@ -164,7 +163,7 @@ static enum es_test_result tx_test(struct es_thread *self)
 
 	ret = readfd_uint64(tx_thread.fd);
 	if (ret < 0) {
-		trace_err("readfd_uint64()");
+		merr("readfd_uint64()");
 		return -1;
 	}
 
@@ -201,27 +200,27 @@ static int tx_go(struct es_thread *self, uint32_t events)
 	}
 
 	if (bad0 || bad1) {
-		trace_err("vlo_buf_is_available(TX), bad0=%u, bad1=%u", bad0, bad1);
+		merr("vlo_buf_is_available(TX), bad0=%u, bad1=%u", bad0, bad1);
 		bad0 = bad1 = 0;
 	}
 
 	struct vlo_buf *req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_TX);
 	if (!req) {
-		trace_err("vlo_buf_get()");
+		merr("vlo_buf_get()");
 		return -1;
 	}
 
 	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
 
 	if (req->ion_transmit != req->ion) {
-		trace_err("not all buffers are writable");
+		merr("not all buffers are writable");
 		ret = -1;
 		goto done;
 	}
 
 	ret = device_put(req->io, req->ion);
 	if (ret < 0)
-		trace_err("serv_put_buf()");
+		merr("serv_put_buf()");
 
 done:
 	vlo_buf_put(req, 0);
@@ -261,26 +260,26 @@ static int send_notification(struct vlo *vl, unsigned int id)
 	int err;
 
 	if (!vlo_buf_is_available(vl, VIRTIO_TEST_QUEUE_NOTIFY)) {
-		trace_err("vlo_buf_is_available()");
+		merr("vlo_buf_is_available()");
 		return -1;
 	}
 
 	req = vlo_buf_get(vl, VIRTIO_TEST_QUEUE_NOTIFY);
 	if (!req) {
-		trace_err("vlo_buf_get()");
+		merr("vlo_buf_get()");
 		return -1;
 	}
 
 	// trace("req: ion=%u, ion_trasmit=%u", req->ion, req->ion_transmit);
 
 	if (req->ion_transmit > 0) {
-		trace_err("not all buffers are writable");
+		merr("not all buffers are writable");
 		err = -1;
 		goto done;
 	}
 
 	if (req->io[0].iov_len < sizeof(struct virtio_test_notify)) {
-		trace_err("first buffer is too small");
+		merr("first buffer is too small");
 		err = -1;
 		goto done;
 	}
@@ -292,7 +291,7 @@ static int send_notification(struct vlo *vl, unsigned int id)
 
 	err = vlo_kick(vl, VIRTIO_TEST_QUEUE_NOTIFY);
 	if (err)
-		trace_err("vlo_kick()");
+		merr("vlo_kick()");
 
 	return err;
 
@@ -338,14 +337,14 @@ static int timer_go(struct es_thread *self, uint32_t events)
 
 	ret = readfd_uint64(timer_thread.fd);
 	if (ret < 0) {
-		trace_err("readfd_uint64()");
+		merr("readfd_uint64()");
 		return -1;
 	}
 
 	if (n % 5 == 0) {
 		ret = send_notification(vl, n);
 		if (ret < 0) {
-			trace_err("send_notification(STOP)");
+			merr("send_notification(STOP)");
 			return -1;
 		}
 	}
@@ -415,7 +414,7 @@ int main(int argc, char **argv)
 
 	vl = vlo_init(VIRTIO_ID_TEST, VIRTIO_TEST_VENDOR_ID, qinfos, VIRTIO_TEST_QUEUE_MAX, &config, sizeof(config), NULL);
 	if (!vl) {
-		trace_err("vlo_init()");
+		merr("vlo_init()");
 		goto error;
 	}
 
@@ -431,7 +430,7 @@ int main(int argc, char **argv)
 
 	err = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 	if (err < 0) {
-		trace_err_p("timerfd_create()");
+		merr_errno("timerfd_create()");
 		goto error_virtio_done;
 	}
 	timer_thread.fd = err;
@@ -449,7 +448,7 @@ int main(int argc, char **argv)
 
 	err = timerfd_settime(timer_thread.fd, 0, &t, NULL);
 	if (err < 0) {
-		trace_err_p("timerfd_settime()");
+		merr_errno("timerfd_settime()");
 		goto error_close_timer_fd;
 	}
 
@@ -462,13 +461,13 @@ int main(int argc, char **argv)
 		&timer_thread,
 		NULL);
 	if (!es) {
-		trace_err("es_init()");
+		merr("es_init()");
 		goto error_close_timer_fd;
 	}
 
 	err = es_schedule(es);
 	if (err < 0) {
-		trace_err("es_schedule()");
+		merr("es_schedule()");
 		goto error_close_timer_fd;
 	}
 

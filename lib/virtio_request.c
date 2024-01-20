@@ -11,7 +11,7 @@
 
 #include "virtio_thread.h"
 #include "libvirtiolo.h"
-#include "error.h"
+#include "merr.h"
 #include "iov.h"
 
 #define CMDDB \
@@ -162,7 +162,7 @@ static unsigned int cmd_SET_SCANOUT(struct virtio_gpu_set_scanout *cmd, struct v
 {
 	// FIXME: pretend we have just 1 scanout right now
 	if (cmd->scanout_id >= 1) {
-		error("scanout_id=%u", cmd->scanout_id);
+		merr("scanout_id=%u", cmd->scanout_id);
 		resp->type = VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID;
 		goto out;
 	}
@@ -176,7 +176,7 @@ static unsigned int cmd_SET_SCANOUT(struct virtio_gpu_set_scanout *cmd, struct v
 	struct virgl_renderer_resource_info info;
 	int ret = virgl_renderer_resource_get_info(cmd->resource_id, &info);
 	if (ret == -1) {
-		error("virgl_renderer_resource_get_info(resource_id=%u)", cmd->resource_id);
+		merr("virgl_renderer_resource_get_info(resource_id=%u)", cmd->resource_id);
 		resp->type = VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID;
 		goto out;
 	}
@@ -228,7 +228,7 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 	struct virtio_gpu_mem_entry *mem;
 	mem = calloc(cmd->nr_entries, sizeof(*mem));
 	if (!mem) {
-		error("calloc(mem)");
+		merr("calloc(mem)");
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto done;
 	}
@@ -236,7 +236,7 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 	size_t mem_bytelen = sizeof(*mem) * cmd->nr_entries;
 	size_t mem_bytelen_read = read_from_iovec(r, nr, sizeof(*cmd), mem, sizeof(*mem) * cmd->nr_entries);
 	if (mem_bytelen_read != mem_bytelen) {
-		error("read_from_iovec()");
+		merr("read_from_iovec()");
 		free(mem);
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto done;
@@ -245,7 +245,7 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 	struct iovec *mapped;
 	mapped = calloc(cmd->nr_entries, sizeof(*mapped));
 	if (!mapped) {
-		error("calloc(backing)");
+		merr("calloc(backing)");
 		free(mem);
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto done;
@@ -255,7 +255,7 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 		// trace("%2u mmap(0x%08u@0x%016llu)", i, mem[i].length, mem[i].addr);
 		void *b = virtio_thread_map_guest(mem[i].addr, PROT_READ | PROT_WRITE, mem[i].length);
 		if (!b) {
-			error("virtio_thread_map_guest()");
+			merr("virtio_thread_map_guest()");
 			free(mem);
 			goto done_unmap;
 		}
@@ -267,7 +267,7 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 
 	int err = virgl_renderer_resource_attach_iov(cmd->resource_id, mapped, cmd->nr_entries);
 	if (err) {
-		error("virgl_renderer_resource_attach_iov()");
+		merr("virgl_renderer_resource_attach_iov()");
 		goto done_unmap;
 	}
 
@@ -332,20 +332,20 @@ static unsigned int cmd_GET_CAPSET(struct virtio_gpu_get_capset *cmd, struct vir
 
 	virgl_renderer_get_cap_set(cmd->capset_id, &max_ver, &max_size);
 	if (!max_size) {
-		error("virgl_renderer_get_cap_set(%u)", cmd->capset_id);
+		merr("virgl_renderer_get_cap_set(%u)", cmd->capset_id);
 		resp->hdr.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
 		goto err;
 	}
 
 	if (cmd->capset_version > max_ver) {
-		error("requested version %u, max versioin is %u", cmd->capset_version, max_ver);
+		merr("requested version %u, max versioin is %u", cmd->capset_version, max_ver);
 		resp->hdr.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
 		goto err;
 	}
 
 	void *capset_data = malloc(max_size);
 	if (!capset_data) {
-		error("malloc()");
+		merr("malloc()");
 		resp->hdr.type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto err;
 	}
@@ -355,7 +355,7 @@ static unsigned int cmd_GET_CAPSET(struct virtio_gpu_get_capset *cmd, struct vir
 	size_t size_written = write_to_iovec(w, nw, sizeof(struct virtio_gpu_ctrl_hdr), capset_data, max_size);
 	free(capset_data);
 	if (size_written != max_size) {
-		error("write_to_iovec(%u): %lu", max_size, size_written);
+		merr("write_to_iovec(%u): %lu", max_size, size_written);
 		resp->hdr.type = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
 		goto err;
 	}
@@ -371,7 +371,7 @@ static unsigned int cmd_RESOURCE_ASSIGN_UUID(struct virtio_gpu_resource_assign_u
 {
 	(void)cmd;
 	(void)resp;
-	error("NOT IMPLEMENTED");
+	merr("NOT IMPLEMENTED");
 	return 0;
 }
 
@@ -460,14 +460,14 @@ static unsigned int cmd_SUBMIT_3D(struct virtio_gpu_cmd_submit *cmd, struct virt
 {
 	void *buf = malloc(cmd->size);
 	if (!buf) {
-		error("malloc()");
+		merr("malloc()");
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto out;
 	}
 
 	size_t s = read_from_iovec(r, nr, sizeof(*cmd), buf, cmd->size);
 	if (s != cmd->size) {
-		error("read_from_ioved(%u): %lu", cmd->size, s);
+		merr("read_from_ioved(%u): %lu", cmd->size, s);
 		resp->type = VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY;
 		goto out_free;
 	}
@@ -522,7 +522,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	nw = buf->ion - nr;
 
 	if (nr < 1 || nw < 1) {
-		error("nr=%lu, nw=%lu", nr, nw);
+		merr("nr=%lu, nw=%lu", nr, nw);
 		return 0;
 	}
 
@@ -537,7 +537,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		trace("header: have to copy");
 		copied = read_from_iovec(r, nr, 0, cmd_hdr, sizeof(struct virtio_gpu_ctrl_hdr));
 		if (copied != sizeof(struct virtio_gpu_ctrl_hdr)) {
-			error("command buffer is too small (hdr)");
+			merr("command buffer is too small (hdr)");
 			return 0;
 		}
 	}
@@ -546,7 +546,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 
 	unsigned int rs = cmd_to_rsize(cmd_hdr->type);
 	if (!rs) {
-		error("unknown command %u", cmd_hdr->type);
+		merr("unknown command %u", cmd_hdr->type);
 		return 0;
 	}
 	unsigned int ws = cmd_to_wsize(cmd_hdr->type);
@@ -558,7 +558,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		trace("cmd: have to copy");
 		copied = read_from_iovec(r, nr, 0, cmd, rs);
 		if (copied != rs) {
-			error("command buffer is too small (cmd)");
+			merr("command buffer is too small (cmd)");
 			return 0;
 		}
 	}
@@ -587,7 +587,7 @@ CMDDB
 		trace("resp: have to copy back to iov");
 		copied = write_to_iovec(w, nw, 0, resp, ws);
 		if (copied != ws) {
-			error("responce buffer is too small");
+			merr("responce buffer is too small");
 			return 0;
 		}
 	}

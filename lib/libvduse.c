@@ -20,6 +20,8 @@
 #define _GNU_SOURCE
 #endif
 
+#include "libvduse.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -40,10 +42,8 @@
 #include <linux/virtio_ring.h>
 #include <linux/virtio_config.h>
 #include <linux/vduse.h>
-#include "libvduse.h"
 
-#define TRACE_FILE "libvduse.c"
-#include "trace.h"
+#include "merr.h"
 
 #define barrier() ({ asm volatile("" ::: "memory"); (void)0; })
 

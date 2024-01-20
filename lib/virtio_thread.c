@@ -15,7 +15,7 @@
 #include <libvirtiolo.h>
 
 #include "epoll_scheduler.h"
-#include "error.h"
+#include "merr.h"
 #include "gettid.h"
 #include "container_of.h"
 
@@ -58,7 +58,7 @@ void virtio_thread_request_done(struct virtio_thread_request *req)
 
 	int err = eventfd_write(notify_thread.fd, 1);
 	if (err)
-		error_errno("eventfd_write()");
+		merr_errno("eventfd_write()");
 }
 
 static enum es_test_result test_wait(struct es_thread *self)
@@ -89,14 +89,14 @@ static int config_go(struct es_thread *self, uint32_t events)
 	err = eventfd_read(self->fd, &ev);
 	// FIXME: EAGAIN?
 	if (err < 0) {
-		error("eventfd_read()");
+		merr("eventfd_read()");
 		// FIXME
 		goto out;
 	}
 
 	err = vlo_config_get(vlo, &c, sizeof(c));
 	if (err < 0) {
-		error("vlo_config_get()");
+		merr("vlo_config_get()");
 		// FIXME
 		goto out;
 	}
@@ -109,7 +109,7 @@ static int config_go(struct es_thread *self, uint32_t events)
 
 		err = vlo_config_set(vlo, &config, sizeof(config));
 		if (err < 0) {
-			error("vlo_config_set()");
+			merr("vlo_config_set()");
 			// FIXME
 			goto out;
 		}
@@ -137,7 +137,7 @@ static int notify_go(struct es_thread *self, uint32_t events)
 	err = eventfd_read(self->fd, &ev);
 	// FIXME: EAGAIN?
 	if (err < 0) {
-		error("eventfd_read()");
+		merr("eventfd_read()");
 		// FIXME
 		goto out;
 	}
@@ -166,12 +166,12 @@ static int notify_go(struct es_thread *self, uint32_t events)
 	if (kick0) {
 		err = vlo_kick(vlo, 0);
 		if (err < 0)
-			error("vlo_kick(0)");
+			merr("vlo_kick(0)");
 	}
 	if (kick1) {
 		err = vlo_kick(vlo, 1);
 		if (err < 0)
-			error("vlo_kick(1)");
+			merr("vlo_kick(1)");
 	}
 
 out:
@@ -194,7 +194,7 @@ static int queue_go(struct es_thread *self, uint32_t events)
 	err = eventfd_read(self->fd, &ev);
 	// FIXME: EAGAIN?
 	if (err < 0) {
-		error("eventfd_read() queue=%u (%s)", queue, self->name);
+		merr("eventfd_read() queue=%u (%s)", queue, self->name);
 		// FIXME
 		goto out;
 	}
@@ -202,13 +202,13 @@ static int queue_go(struct es_thread *self, uint32_t events)
 	while (vlo_buf_is_available(vlo, queue)) {
 		struct virtio_thread_request *req = malloc(sizeof(*req));
 		if (!req) {
-			error("malloc()");
+			merr("malloc()");
 			goto out;
 		}
 		req->buf = vlo_buf_get(vlo, queue);
 		if (!req->buf) {
 			free(req);
-			error("vlo_get_buffer()");
+			merr("vlo_get_buffer()");
 			goto out;
 		}
 		req->queue = queue;
@@ -272,7 +272,7 @@ static void *virtio_thread(void *ptr)
 
 	err = es_schedule(es);
 	if (err < 0) {
-		error("es_schedule()");
+		merr("es_schedule()");
 		// FIXME: error
 	}
 
@@ -290,14 +290,14 @@ int virtio_thread_start(unsigned int num_capsets)
 
 	notify_thread.fd = eventfd(0, EFD_NONBLOCK);
 	if (notify_thread.fd < 0) {
-		error("eventfd()");
+		merr("eventfd()");
 		goto err;
 	}
 
 	uint64_t features = 1UL << VIRTIO_GPU_F_VIRGL | 1UL << VIRTIO_F_VERSION_1 | 1UL << VIRTIO_GPU_F_RESOURCE_UUID;
 	vlo = vlo_init(VIRTIO_ID_GPU, 0x1af4, qinfos, 2, &config, sizeof(config), &features);
 	if (!vlo) {
-		error("vlo_init()");
+		merr("vlo_init()");
 		goto err_notify_close;
 	}
 
@@ -312,13 +312,13 @@ int virtio_thread_start(unsigned int num_capsets)
 		&notify_thread,
 		NULL);
 	if (!es) {
-		error("es_init()");
+		merr("es_init()");
 		goto err_vlo_done;
 	}
 
 	err = pthread_create(&thread, NULL, virtio_thread, NULL);
 	if (err) {
-		error("pthread_create(): %s", strerror(err));
+		merr("pthread_create(): %s", strerror(err));
 		// FIXME: what shoul I do with the es instance that was not run?
 		goto err_vlo_done;
 	}
@@ -339,7 +339,7 @@ void virtio_thread_stop(void)
 	done = true;
 	int err = eventfd_write(notify_thread.fd, 1);
 	if (err)
-		error_errno("eventfd_write()");
+		merr_errno("eventfd_write()");
 	pthread_join(thread, NULL);
 
 	vlo_done(vlo);
