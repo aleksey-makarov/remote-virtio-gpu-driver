@@ -15,16 +15,16 @@
  * limitations under the License.
  */
 
-#ifndef __error_h__
-#define __error_h__
+#ifndef __merr_h__
+#define __merr_h__
 
 #include <stdio.h>
 
-#define error(_format, ...) ({                       \
+#define merr(_format, ...) ({                        \
 	fprintf(stderr, "* %s():%d : " _format "\n", \
 		__func__, __LINE__, ##__VA_ARGS__); })
 
-#define error_errno(_format, ...) ({                    \
+#define merr_errno(_format, ...) ({                     \
 	fprintf(stderr, "* %s():%d %m : " _format "\n", \
 		__func__, __LINE__, ##__VA_ARGS__); })
 

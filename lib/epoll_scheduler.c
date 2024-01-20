@@ -7,7 +7,7 @@
 #include <sys/epoll.h>
 #include <assert.h>
 
-#include "error.h"
+#include "merr.h"
 
 #define INITIAL_CAPACITY 16
 struct es {
@@ -46,14 +46,14 @@ static int es_resize(struct es *es)
 
 	struct es_thread **data_new = reallocarray(es->data, capacity_new, sizeof(*data_new));
 	if (!data_new) {
-		error_errno("reallocarray() data");
+		merr_errno("reallocarray() data");
 		return -1;
 	}
 	es->data = data_new;
 
 	struct epoll_event *events_new = reallocarray(es->events, capacity_new, sizeof(*events_new));
 	if (!events_new) {
-		error_errno("reallocarray() events");
+		merr_errno("reallocarray() events");
 		return -1;
 	}
 	es->events = events_new;
@@ -77,7 +77,7 @@ static int _es_add(struct es *es, struct es_thread *th)
 	// trace("epoll_ctl(ADD) n=%u, epoll_fd=%d, name=\"%s\", fd=%d", es->data_len, es->epoll_fd, th->name, th->fd);
 	ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_ADD, th->fd, &th->private);
 	if (ret < 0) {
-		error_errno("epoll_ctl(ADD \"%s\") n=%u", th->name, es->data_len);
+		merr_errno("epoll_ctl(ADD \"%s\") n=%u", th->name, es->data_len);
 		return ret;
 	}
 
@@ -103,13 +103,13 @@ struct es *es_init(struct es_thread *thread, ...)
 
 	struct es *es = malloc(sizeof(*es));
 	if (!es) {
-		error("malloc() es");
+		merr("malloc() es");
 		goto error_va_end;
 	}
 
 	es->epoll_fd = epoll_create(1);
 	if (es->epoll_fd < 0) {
-		error_errno("epoll_create()");
+		merr_errno("epoll_create()");
 		goto error_free;
 	}
 
@@ -121,13 +121,13 @@ struct es *es_init(struct es_thread *thread, ...)
 
 	es->data = calloc(capacity, sizeof(*es->data));
 	if (!es->data) {
-		error("calloc() data");
+		merr("calloc() data");
 		goto error_close;
 	}
 
 	err = _es_add(es, thread);
 	if (err < 0) {
-		error("_es_add(\'%s\')", thread->name);
+		merr("_es_add(\'%s\')", thread->name);
 		goto error_free_data;
 	}
 
@@ -135,14 +135,14 @@ struct es *es_init(struct es_thread *thread, ...)
 		// trace("fd=%d, test=0x%lu, name=\'%s\'", th->fd, (long unsigned int)th->test, th->name);
 		err = _es_add(es, th);
 		if (err < 0) {
-			error("_es_add(\'%s\')", th->name);
+			merr("_es_add(\'%s\')", th->name);
 			goto error_epoll_ctl_del;
 		}
 	}
 
 	es->events = calloc(capacity, sizeof(*es->events));
 	if (!es->events) {
-		error("calloc() events");
+		merr("calloc() events");
 		goto error_epoll_ctl_del;
 	}
 
@@ -180,7 +180,7 @@ int es_add(struct es *es, struct es_thread *thread)
 	if (es->data_len == es->data_capacity) {
 		ret = es_resize(es);
 		if (ret < 0) {
-			error("es_resize()");
+			merr("es_resize()");
 			es_done(es);
 			return ret;
 		}
@@ -188,7 +188,7 @@ int es_add(struct es *es, struct es_thread *thread)
 
 	ret = _es_add(es, thread);
 	if (ret < 0) {
-		error_errno("_es_add(\'%s\')", thread->name);
+		merr_errno("_es_add(\'%s\')", thread->name);
 		es_done(es);
 		return ret;
 	}
@@ -219,7 +219,7 @@ int es_schedule(struct es *es)
 			th->ready = false;
 			if (ret == ES_DONE || ret < 0) {
 				if (ret < 0) {
-					error("\"%s\" test reported error", th->name);
+					merr("\"%s\" test reported merr", th->name);
 				} else {
 					// trace("\"%s\" requested shutdown", th->name);
 				}
@@ -227,7 +227,7 @@ int es_schedule(struct es *es)
 			} else if (ret == ES_EXIT_THREAD) {
 				ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_DEL, th->fd, (void *)1);
 				if (ret < 0) {
-					error_errno("epoll_ctl(DEL) (\"%s\")", th->name);
+					merr_errno("epoll_ctl(DEL) (\"%s\")", th->name);
 					goto done;
 				}
 				// trace("\"%s\" is quitting", th->name);
@@ -245,7 +245,7 @@ int es_schedule(struct es *es)
 					th->private.data.u32 = n;
 					ret = epoll_ctl(es->epoll_fd, EPOLL_CTL_MOD, th->fd, &th->private);
 					if (ret < 0) {
-						error_errno("epoll_ctl(MOD) (\"%s\")", th->name);
+						merr_errno("epoll_ctl(MOD) (\"%s\")", th->name);
 						goto done;
 					}
 				}
@@ -256,10 +256,10 @@ int es_schedule(struct es *es)
 		ret = epoll_wait(es->epoll_fd, es->events, es->data_len, ready ? 0 : -1);
 		// trace("epoll_wait() ... ret=%d", ret);
 		if (ret < 0) {
-			error_errno("epoll_wait()");
+			merr_errno("epoll_wait()");
 			goto done;
 		} else if ( (!ready && ret == 0) || (unsigned int)ret > es->data_len) {
-			error("epoll_wait() ???");
+			merr("epoll_wait() ???");
 			ret = -1;
 			goto done;
 		}
@@ -270,7 +270,7 @@ int es_schedule(struct es *es)
 			if (th->go) {
 				ret = th->go(th, ev->events);
 				if (ret < 0) {
-					error("\"%s\" go reported error @2", th->name);
+					merr("\"%s\" go reported merr @2", th->name);
 					goto done;
 				}
 			}
@@ -285,7 +285,7 @@ int es_schedule(struct es *es)
 				if (th->go) {
 					ret = th->go(th, 0);
 					if (ret < 0) {
-						error("\"%s\" go reported error @3", th->name);
+						merr("\"%s\" go reported merr @3", th->name);
 						goto done;
 					}
 				}

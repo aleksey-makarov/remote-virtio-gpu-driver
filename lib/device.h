@@ -1,6 +1,8 @@
 #ifndef __device_h__
 #define __device_h__
 
+struct iovec;
+
 void device_reset(void);
 
 unsigned long int device_get_data_length(void);

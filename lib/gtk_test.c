@@ -7,7 +7,7 @@
 #include <epoxy/gl.h>
 #include <gtk/gtk.h>
 
-#include "error.h"
+#include "merr.h"
 #include "es2gears.h"
 #include "timeval.h"
 
@@ -57,7 +57,7 @@ static void realize(GtkWidget *widget)
 	gtk_gl_area_make_current(GTK_GL_AREA(widget));
 	GError *gerr = gtk_gl_area_get_error(GTK_GL_AREA(widget));
 	if (gerr) {
-		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
+		merr("gtk_gl_area_make_current(): \'%s\'", gerr->message);
 		return;
 	}
 
@@ -72,7 +72,7 @@ static void realize(GtkWidget *widget)
 
 	gears = es2gears_init();
 	if (!gears) {
-		error("es2gears_init()");
+		merr("es2gears_init()");
 		return;
 	}
 
@@ -83,7 +83,7 @@ static void realize(GtkWidget *widget)
 
 	int err = gettimeofday(&start, NULL);
 	if (err < 0) {
-		error_errno("gettimeofday()");
+		merr_errno("gettimeofday()");
 		return;
 	}
 
@@ -97,7 +97,7 @@ static void unrealize(GtkWidget *widget)
 	gtk_gl_area_make_current(GTK_GL_AREA(widget));
 	GError *err = gtk_gl_area_get_error(GTK_GL_AREA(widget));
 	if (err) {
-		error("gtk_gl_area_make_current(): \'%s\'", err->message);
+		merr("gtk_gl_area_make_current(): \'%s\'", err->message);
 		return;
 	}
 
@@ -111,7 +111,7 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 
 	GError *gerr = gtk_gl_area_get_error(area);
 	if (gerr) {
-		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
+		merr("gtk_gl_area_make_current(): \'%s\'", gerr->message);
 		return FALSE;
 	}
 
@@ -120,7 +120,7 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 
 	int err = gettimeofday(&now, NULL);
 	if (err < 0) {
-		error_errno("gettimeofday()");
+		merr_errno("gettimeofday()");
 		return FALSE;
 	}
 
@@ -131,7 +131,7 @@ static gboolean render(GtkGLArea *area, UNUSED GdkGLContext *context)
 
 	gerr = gtk_gl_area_get_error(area);
 	if (gerr) {
-		error("gtk_gl_area_make_current(): \'%s\'", gerr->message);
+		merr("gtk_gl_area_make_current(): \'%s\'", gerr->message);
 		return FALSE;
 	}
 

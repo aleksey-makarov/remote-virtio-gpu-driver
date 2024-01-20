@@ -1,3 +1,5 @@
+#include "libvirtiolo.h"
+
 #include <sys/eventfd.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -12,9 +14,7 @@
 
 #include <linux/virtio_lo.h>
 
-#include "libvirtiolo.h"
-#define TRACE_FILE "libvirtiolo.c"
-#include "trace.h"
+#include "merr.h"
 
 #define VIRTIO_LO_PATH "/dev/virtio-lo"
 
@@ -89,7 +89,7 @@ static int map_vring(struct vlo *vl, struct vring *vr, struct virtio_lo_qinfo *q
 	vr->avail = vlo_map_guest(vl, q->avail, PROT_READ,              SIZE_avail(vr->num));
 	vr->used  = vlo_map_guest(vl, q->used,  PROT_READ | PROT_WRITE, SIZE_used(vr->num));
 	if (!vr->desc || !vr->avail || !vr->used) {
-		trace_err("%p %p %p", vr->desc, vr->avail, vr->used);
+		merr("%p %p %p", vr->desc, vr->avail, vr->used);
 		unmap_vring(vr);
 		return -1;
 	}
@@ -105,7 +105,7 @@ static int map_vrings(struct vlo *vl, struct virtio_lo_qinfo *q)
 		struct vring *vr = &vl->vrings[i].vring;
 		vr->num = q->size;
 		if (map_vring(vl, vr, q + i)) {
-			trace_err("error mapping ring %u", i);
+			merr("error mapping ring %u", i);
 			goto error;
 		}
 	}
@@ -143,7 +143,7 @@ struct vlo *vlo_init(
 
 	struct vlo *ret = malloc(sizeof(struct vlo) + sizeof(struct vlo_vring) * qinfosn);
 	if (!ret) {
-		trace_err("calloc()");
+		merr("calloc()");
 		goto error;
 	}
 	ret->vringsn = qinfosn;
@@ -152,20 +152,20 @@ struct vlo *vlo_init(
 	trace("open(%s)", VIRTIO_LO_PATH);
 	ret->fd = open(VIRTIO_LO_PATH, O_RDWR);
 	if (ret->fd == -1) {
-		trace_err_p("open(%s)", VIRTIO_LO_PATH);
+		merr_errno("open(%s)", VIRTIO_LO_PATH);
 		goto error_free;
 	}
 
 	ret->config_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 	if (ret->config_fd == -1) {
-		trace_err_p("eventfd(config_fd)");
+		merr_errno("eventfd(config_fd)");
 		goto error_close;
 	}
 
 	for (i = 0; i < qinfosn; i++) {
 		ret->vrings[i].kick_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 		if (ret->vrings[i].kick_fd == -1) {
-			trace_err_p("eventfd(kick_fd)");
+			merr_errno("eventfd(kick_fd)");
 			unsigned int j;
 			for (j = 0; j < i; j++)
 				close(ret->vrings[i].kick_fd);
@@ -190,7 +190,7 @@ struct vlo *vlo_init(
 
 	trace("ioctl(VIRTIO_LO_ADDDEV)");
 	if (ioctl(ret->fd, VIRTIO_LO_ADDDEV, &info)) {
-		trace_err_p("ioctl(VIRTIO_LO_ADDDEV)");
+		merr_errno("ioctl(VIRTIO_LO_ADDDEV)");
 		goto error_close_kick_fd;
 	}
 
@@ -206,7 +206,7 @@ struct vlo *vlo_init(
 	trace("map_queues()");
 	err = map_vrings(ret, qinfos);
 	if (err) {
-		trace_err("maps_vrings()");
+		merr("maps_vrings()");
 		goto error_unmap_queues;
 	}
 
@@ -236,7 +236,7 @@ void vlo_done(struct vlo *v)
 
 	trace("ioctl(VIRTIO_LO_DELDEV, %u)", v->idx);
 	if (ioctl(v->fd, VIRTIO_LO_DELDEV, &v->idx))
-		trace_err_p("ioctl(VIRTIO_LO_DELDEV)");
+		merr_errno("ioctl(VIRTIO_LO_DELDEV)");
 
 	for (i = 0; i < v->vringsn; i++)
 		close(v->vrings[i].kick_fd);
@@ -292,7 +292,7 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 			}
 		} else {
 			if (!(di.flags & VRING_DESC_F_WRITE)) {
-				trace_err("read buffers follow write buffers - not implemented");
+				merr("read buffers follow write buffers - not implemented");
 				return NULL;
 			}
 		}
@@ -302,7 +302,7 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 
 	struct vlo_buf *req = malloc(sizeof(struct vlo_buf) + ion * sizeof(struct iovec));
 	if (!req) {
-		trace_err("malloc()");
+		merr("malloc()");
 		return NULL;
 	}
 
@@ -318,7 +318,7 @@ struct vlo_buf *vlo_buf_get(struct vlo *vl, unsigned int queue)
 		req->io[i].iov_len = di.len;
 		req->io[i].iov_base = vlo_map_guest(vl, di.addr, di.flags & VRING_DESC_F_WRITE ? (PROT_WRITE | PROT_READ) : PROT_READ, di.len);
 		if (!req->io[i].iov_base) {
-			trace_err("map_guest()");
+			merr("map_guest()");
 			goto error;
 		}
 
@@ -382,7 +382,7 @@ int vlo_kick(struct vlo *vl, int queue)
 	// trace("ioctl(VIRTIO_LO_KICK, %d)", queue);
 	err = ioctl(vl->fd, VIRTIO_LO_KICK, &k);
 	if (err) {
-		trace_err_p("ioctl(VIRTIO_LO_KICK)");
+		merr_errno("ioctl(VIRTIO_LO_KICK)");
 		return -1;
 	}
 
@@ -408,7 +408,7 @@ int vlo_config_get(struct vlo *vl, void *config, unsigned int config_length)
 	trace("ioctl(VIRTIO_LO_GCONF)");
 	err = ioctl(vl->fd, VIRTIO_LO_GCONF, &cfg);
 	if (err)
-		trace_err_p("ioctl(VIRTIO_LO_GCONF)");
+		merr_errno("ioctl(VIRTIO_LO_GCONF)");
 
 	return err;
 }
@@ -432,7 +432,7 @@ int vlo_config_set(struct vlo *vl, void *config, unsigned int config_length)
 	trace("ioctl(VIRTIO_LO_SCONF)");
 	err = ioctl(vl->fd, VIRTIO_LO_SCONF, &cfg);
 	if (err)
-		trace_err_p("ioctl(VIRTIO_LO_SCONF)");
+		merr_errno("ioctl(VIRTIO_LO_SCONF)");
 
 	return err;
 }

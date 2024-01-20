@@ -1,10 +1,10 @@
+#include "device.h"
+
 #include <sys/uio.h>
 #include <assert.h>
+#include <string.h>
 
-#define TRACE_FILE "device.c"
-#include "trace.h"
-
-#include "device.h"
+#include "merr.h"
 
 #define K 1024
 #define M (K * K)
@@ -37,7 +37,7 @@ static unsigned int min_ui(unsigned int a, unsigned int b)
 static int device_put1(char *data, unsigned int length)
 {
 	if (device_get_free_space() < length) {
-		trace_err("free=%lu, length=%u", device_get_free_space(), length);
+		merr("free=%lu, length=%u", device_get_free_space(), length);
 		return -1;
 	}
 
@@ -62,7 +62,7 @@ int device_put(struct iovec *v, unsigned int n)
 	for (i = 0; i < n; i++) {
 		err = device_put1(v[i].iov_base, v[i].iov_len);
 		if (err) {
-			trace_err("error @%u", i);
+			merr("error @%u", i);
 			return err;
 		}
 	}
