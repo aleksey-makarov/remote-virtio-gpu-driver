@@ -118,6 +118,43 @@ static void virgl_log_callback(
 		message);
 }
 
+#if 0
+static void
+MessageCallback(GLenum source,
+		GLenum type,
+		GLuint id,
+		GLenum severity,
+		GLsizei length,
+		const GLchar* message,
+		const void* userParam )
+{
+	(void)source;
+	(void)id;
+	(void)severity;
+	(void)length;
+	(void)userParam;
+
+	const char *type_string = "???";
+
+#define _X(x) case GL_DEBUG_TYPE_ ## x: type_string = #x; break;
+	switch (type) {
+	_X(ERROR)		// An error, typically from the API
+	_X(DEPRECATED_BEHAVIOR)	// Some behavior marked deprecated has been used
+	_X(UNDEFINED_BEHAVIOR)	// Something has invoked undefined behavior
+	_X(PORTABILITY)		// Some functionality the user relies upon is not portable
+	_X(PERFORMANCE)		// Code has triggered possible performance issues
+	_X(MARKER)		// Command stream annotation
+	_X(PUSH_GROUP)		// Group pushing
+	_X(POP_GROUP)		// Group popping
+	_X(OTHER)		// Some type that isn't one of these
+	default: type_string = "???"; break;
+	}
+#undef _X
+
+	fprintf(stderr, "%c GL %s: %s\n", type == GL_DEBUG_TYPE_ERROR ? '*' : '-', type_string, message);
+}
+#endif
+
 static pthread_mutex_t req_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 static STAILQ_HEAD(, virtio_thread_request) req_queue = STAILQ_HEAD_INITIALIZER(req_queue);
 
@@ -230,6 +267,9 @@ int main(int argc, char **argv)
 
 	unsigned int num_capsets = get_num_capsets();
 	trace("num_capsets=%u", num_capsets);
+
+	glEnable(GL_DEBUG_OUTPUT);
+	// glDebugMessageCallback(MessageCallback, 0);
 
 	err = virtio_thread_start(num_capsets);
 	if (err) {
