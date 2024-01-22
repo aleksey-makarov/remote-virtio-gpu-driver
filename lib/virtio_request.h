@@ -1,8 +1,15 @@
 #ifndef __virtio_request_h__
 #define __virtio_request_h__
 
-struct vlo_buf;
+#include <sys/queue.h>
 
-unsigned int virtio_request(struct vlo_buf *buf);
+struct virtio_thread_request;
+
+STAILQ_HEAD(virtio_request_queue, virtio_thread_request);
+
+extern struct virtio_request_queue virtio_request_ready;
+extern struct virtio_request_queue virtio_request_fence;
+
+void virtio_request(struct virtio_thread_request *req);
 
 #endif

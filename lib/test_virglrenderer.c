@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/eventfd.h>
+#include <assert.h>
 
 #include <linux/virtio_gpu.h>
 
@@ -24,10 +25,31 @@ static int drm_device_fd;
 static void test_write_fence(void *cookie, uint32_t fence)
 {
 	(void)cookie;
-	(void)fence;
-	trace();
-}
 
+	trace("F0x%u", fence);
+
+	struct virtio_request_queue reqs_tmp = STAILQ_HEAD_INITIALIZER(reqs_tmp);
+
+	STAILQ_CONCAT(&reqs_tmp, &virtio_request_fence);
+
+	while (!STAILQ_EMPTY(&reqs_tmp)) {
+
+		struct virtio_thread_request *req = STAILQ_FIRST(&reqs_tmp);
+		STAILQ_REMOVE_HEAD(&reqs_tmp, queue_entry);
+
+		if (req->fence_id > fence) {
+			// leave this in the fence queue
+			trace("S%u F0x%lu -> fence", req->serial, req->fence_id);
+			STAILQ_INSERT_TAIL(&virtio_request_fence, req, queue_entry);
+		} else {
+			// reply
+			// trace("S%u F0x%lu -> ready", req->serial, req->fence_id);
+			// STAILQ_INSERT_TAIL(&virtio_request_ready, req, queue_entry);
+			trace("S%u F0x%lu done", req->serial, req->fence_id);
+			virtio_thread_request_done(req);
+		}
+	}
+}
 
 static int test_get_drm_fd(void *cookie)
 {
@@ -89,7 +111,7 @@ static void virgl_log_callback(
 	void* user_data)
 {
 	(void)user_data;
-	fprintf(stderr, "%c %s: %s",
+	fprintf(stderr, "%c VIRGL %s: %s",
 		log_level == VIRGL_LOG_LEVEL_ERROR ? '*' : '-',
 		virgl_log_level_to_string(log_level) ?: "???",
 		message);
@@ -104,12 +126,22 @@ static enum es_test_result test_wait(struct es_thread *self)
 	return ES_WAIT;
 }
 
+static void check_ready_requests(void)
+{
+	while (!STAILQ_EMPTY(&virtio_request_ready)) {
+		struct virtio_thread_request *req = STAILQ_FIRST(&virtio_request_ready);
+		STAILQ_REMOVE_HEAD(&virtio_request_ready, queue_entry);
+		trace("S%u done", req->serial);
+		virtio_thread_request_done(req);
+	}
+}
+
 static int notify_go(struct es_thread *self, uint32_t events)
 {
 	(void)self;
 	(void)events;
 
-	static STAILQ_HEAD(, virtio_thread_request) tmp_queue = STAILQ_HEAD_INITIALIZER(tmp_queue);
+	STAILQ_HEAD(, virtio_thread_request) tmp_queue = STAILQ_HEAD_INITIALIZER(tmp_queue);
 	eventfd_t ev;
 	int err;
 
@@ -129,8 +161,8 @@ static int notify_go(struct es_thread *self, uint32_t events)
 
 		// trace("(3) %d put %d", req->serial, gettid());
 
-		req->resp_len = virtio_request(req->buf);
-		virtio_thread_request_done(req);
+		virtio_request(req);
+		check_ready_requests();
 	}
 out:
 	return 0;

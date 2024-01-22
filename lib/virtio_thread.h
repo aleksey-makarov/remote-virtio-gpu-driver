@@ -10,6 +10,7 @@ struct vlo_buf;
 struct virtio_thread_request {
 	struct vlo_buf *buf;
 	unsigned int resp_len;
+	uint64_t fence_id;
 	unsigned int queue;
 	unsigned int serial;
 	STAILQ_ENTRY(virtio_thread_request) queue_entry;

@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <limits.h>
 
 #include <virgl/virglrenderer.h>
 
@@ -223,7 +224,7 @@ static unsigned int cmd_RESOURCE_ATTACH_BACKING(struct virtio_gpu_resource_attac
 {
 	unsigned int i;
 
-	trace("nr_entries=%u", cmd->nr_entries);
+	// trace("nr_entries=%u", cmd->nr_entries);
 
 	struct virtio_gpu_mem_entry *mem;
 	mem = calloc(cmd->nr_entries, sizeof(*mem));
@@ -500,10 +501,16 @@ static unsigned int cmd_UPDATE_CURSOR(struct virtio_gpu_update_cursor *cmd, stru
 	return sizeof(*resp);
 }
 
+struct virtio_request_queue virtio_request_ready = STAILQ_HEAD_INITIALIZER(virtio_request_ready);
+struct virtio_request_queue virtio_request_fence = STAILQ_HEAD_INITIALIZER(virtio_request_fence);
+
 // returns resp_len
-unsigned int virtio_request(struct vlo_buf *buf)
+void virtio_request(struct virtio_thread_request *req)
 {
-	assert(buf);
+	assert(req);
+	assert(req->buf);
+
+	struct vlo_buf *buf = req->buf;
 
 	size_t copied;
 
@@ -514,8 +521,6 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	unsigned char resp_buf[1024];
 	void *resp = &resp_buf;
 
-	unsigned int resp_len;
-
 	r = buf->io;
 	w = buf->io + buf->ion_transmit;
 	nr = buf->ion_transmit;
@@ -523,7 +528,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 
 	if (nr < 1 || nw < 1) {
 		merr("nr=%lu, nw=%lu", nr, nw);
-		return 0;
+		goto err;
 	}
 
 	virgl_renderer_poll();
@@ -538,16 +543,16 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		copied = read_from_iovec(r, nr, 0, cmd_hdr, sizeof(struct virtio_gpu_ctrl_hdr));
 		if (copied != sizeof(struct virtio_gpu_ctrl_hdr)) {
 			merr("command buffer is too small (hdr)");
-			return 0;
+			goto err;
 		}
 	}
 
-	trace("%s%s", cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
+	trace("S%u %s%s", req->serial, cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
 
 	unsigned int rs = cmd_to_rsize(cmd_hdr->type);
 	if (!rs) {
 		merr("unknown command %u", cmd_hdr->type);
-		return 0;
+		goto err;
 	}
 	unsigned int ws = cmd_to_wsize(cmd_hdr->type);
 	assert(ws); // zeroes should be excluded by cmd_to_rsize()
@@ -559,7 +564,7 @@ unsigned int virtio_request(struct vlo_buf *buf)
 		copied = read_from_iovec(r, nr, 0, cmd, rs);
 		if (copied != rs) {
 			merr("command buffer is too small (cmd)");
-			return 0;
+			goto err;
 		}
 	}
 
@@ -568,19 +573,32 @@ unsigned int virtio_request(struct vlo_buf *buf)
 	memset(resp, 0, ws);
 
 	switch(cmd_hdr->type) {
-#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: resp_len = cmd_ ## n (cmd, resp); break;
+#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: req->resp_len = cmd_ ## n (cmd, resp); break;
 CMDDB
 #undef _X
 	default:
-		resp_len = 0;
 		assert(0); // these sould be ruled out by cmd_to_?size()
 	}
 
 	if (cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE) {
-		// FIXME: reply only on command processing completion (?)
 		struct virtio_gpu_ctrl_hdr *resp_hdr = resp;
 		resp_hdr->flags |= VIRTIO_GPU_FLAG_FENCE;
-		resp_hdr->fence_id = cmd_hdr->fence_id;
+		req->fence_id = resp_hdr->fence_id = cmd_hdr->fence_id;
+
+		/*
+		* test_write_fence() -- uint32_t
+		* virgl_renderer_create_fence() -- int
+		* struct virtio_gpu_ctrl_hdr -- __le64
+		*/
+		if (req->fence_id > INT_MAX)
+			merr("fence_id: 0x%lx", req->fence_id);
+
+		virgl_renderer_create_fence(cmd_hdr->fence_id, cmd_hdr->type);
+		trace("S%u F0x%lu -> fence", req->serial, req->fence_id);
+		STAILQ_INSERT_TAIL(&virtio_request_fence, req, queue_entry);
+	} else {
+		trace("S%u -> ready", req->serial);
+		STAILQ_INSERT_TAIL(&virtio_request_ready, req, queue_entry);
 	}
 
 	if (resp == &resp_buf) {
@@ -588,9 +606,13 @@ CMDDB
 		copied = write_to_iovec(w, nw, 0, resp, ws);
 		if (copied != ws) {
 			merr("responce buffer is too small");
-			return 0;
+			goto err;
 		}
 	}
 
-	return resp_len;
+	return;
+
+err:
+	req->resp_len = 0;
+	STAILQ_INSERT_TAIL(&virtio_request_ready, req, queue_entry);
 }
