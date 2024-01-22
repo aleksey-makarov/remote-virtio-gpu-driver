@@ -12,6 +12,7 @@
 #include <linux/virtio_gpu.h>
 
 #include <virgl/virglrenderer.h>
+#include <epoxy/gl.h>
 
 #include "gettid.h"
 #include "epoll_scheduler.h"

@@ -8,8 +8,8 @@ set(CMAKE_C_FLAGS       "${CMAKE_C_FLAGS} -Wall -Wextra")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 
 include(FindPkgConfig)
-pkg_check_modules(extlibs REQUIRED gtk+-3.0 glm epoxy)
-pkg_check_modules(virglrenderer REQUIRED virglrenderer)
+pkg_check_modules(gtk_test_modules REQUIRED gtk+-3.0 glm epoxy)
+pkg_check_modules(test_virglrenderer_modules REQUIRED virglrenderer epoxy)
 
 #
 # libvirtiolo
@@ -53,16 +53,16 @@ target_link_libraries(test_vduse_gpu PRIVATE misc)
 #
 
 add_executable(gtk_test gtk_test.c es2gears.c)
-target_include_directories(gtk_test PRIVATE ${extlibs_INCLUDE_DIRS})
-target_link_libraries(gtk_test PRIVATE ${extlibs_LIBRARIES} m)
+target_include_directories(gtk_test PRIVATE ${gtk_test_modules_INCLUDE_DIRS})
+target_link_libraries(gtk_test PRIVATE ${gtk_test_modules_LIBRARIES} m)
 
 #
 # test_virglrenderer
 #
 
 add_executable(test_virglrenderer test_virglrenderer.c virtio_thread.c epoll_scheduler.c virtio_request.c iov.c)
-target_include_directories(test_virglrenderer PRIVATE ${virglrenderer_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(test_virglrenderer PRIVATE ${virglrenderer_LIBRARIES} virtiolo)
+target_include_directories(test_virglrenderer PRIVATE ${test_virglrenderer_modules_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_virglrenderer PRIVATE ${test_virglrenderer_modules_LIBRARIES} virtiolo)
 
 #
 # install
