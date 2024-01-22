@@ -9,7 +9,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 
 include(FindPkgConfig)
 pkg_check_modules(gtk_test_modules REQUIRED gtk+-3.0 glm epoxy)
-pkg_check_modules(test_virglrenderer_modules REQUIRED virglrenderer epoxy)
+pkg_check_modules(test_virglrenderer_modules REQUIRED virglrenderer epoxy gbm libdrm)
 
 #
 # libvirtiolo
@@ -60,7 +60,7 @@ target_link_libraries(gtk_test PRIVATE ${gtk_test_modules_LIBRARIES} m)
 # test_virglrenderer
 #
 
-add_executable(test_virglrenderer test_virglrenderer.c virtio_thread.c epoll_scheduler.c virtio_request.c iov.c)
+add_executable(test_virglrenderer test_virglrenderer.c virtio_thread.c epoll_scheduler.c virtio_request.c iov.c drm_state.c)
 target_include_directories(test_virglrenderer PRIVATE ${test_virglrenderer_modules_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_virglrenderer PRIVATE ${test_virglrenderer_modules_LIBRARIES} virtiolo)
 
