@@ -1,9 +1,4 @@
-/*******************************************************************************
- * Copyright (c) 2023 OpenSynergy GmbH.
- *
- * This software may not be used in any way or distributed without
- * permission. All rights reserved.
- ******************************************************************************/
+#include "drm_state.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -17,8 +12,7 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-#define LOG_TAG "libuhmigl"
-#include "pr.h"
+#include "merr.h"
 
 #ifndef __unused
 #define __unused __attribute__((unused))
@@ -67,22 +61,22 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 	if (connector_number_string)
 		connector_number = atoi(connector_number_string);
 
-	pr_info("open(%s) (connector number: %d)", device_name, connector_number);
+	trace("open(%s) (connector number: %d)", device_name, connector_number);
 	fd = open(device_name, O_RDWR);
 	if (fd < 0) {
-		pr_err("open(%s) (%s) (device could be specified with %s environment variable)", device_name, strerror(errno), device_name_env_var_name);
+		merr("open(%s) (%s) (device could be specified with %s environment variable)", device_name, strerror(errno), device_name_env_var_name);
 		fd = 0;
 		goto error;
 	}
 
-	pr_info("drmModeGetResources()");
+	trace("drmModeGetResources()");
 	resources = drmModeGetResources(fd);
 	if (!resources) {
-		pr_err("drmModeGetResources()");
+		merr("drmModeGetResources()");
 		goto error_close;
 	}
 
-	pr_info("count_fbs: %u, count_crtcs: %u, count_connectors: %u, count_encoders: %u, %ux%u - %ux%u",
+	trace("count_fbs: %u, count_crtcs: %u, count_connectors: %u, count_encoders: %u, %ux%u - %ux%u",
 		(unsigned)resources->count_fbs,
 		(unsigned)resources->count_crtcs,
 		(unsigned)resources->count_connectors,
@@ -90,11 +84,11 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 		(unsigned)resources->min_width, (unsigned)resources->min_height,
 		(unsigned)resources->max_width, (unsigned)resources->max_height);
 
-	pr_info("find a connected connector");
+	trace("find a connected connector");
 	for (int c = 0; c < resources->count_connectors; c++) {
 		drmModeConnector *connector_tmp = drmModeGetConnector(fd, resources->connectors[c]);
 		int this = DRM_MODE_CONNECTED == connector_tmp->connection && connector_number-- == 0;
-		pr_info("%c connector_id: %u, connection: %u (%s)",
+		trace("%c connector_id: %u, connection: %u (%s)",
 			this ? '>' : ' ',
 			(unsigned)connector_tmp->connector_id,
 			(unsigned)connector_tmp->connection,
@@ -107,17 +101,17 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 	}
 
 	if (!connector) {
-		pr_err("could not find connected connectors");
+		merr("could not find connected connectors");
 		goto error_free_resources;
 	}
 
-	pr_info("find resolution (full-screen)");
+	trace("find resolution (full-screen)");
 	unsigned int best_area = 0;
 	drmModeModeInfo* best_mode = NULL;
 	for (int m = 0; m < connector->count_modes; m++) {
 		drmModeModeInfo* cur_mode = &connector->modes[m];
 #if 0
-		pr_info("mode: \"%s\" %ux%u%s",
+		trace("mode: \"%s\" %ux%u%s",
 			cur_mode->name,
 			(unsigned)cur_mode->hdisplay,
 			(unsigned)cur_mode->vdisplay,
@@ -135,20 +129,20 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 
 	if (!drm_state_mode) {
 		if (best_mode) {
-			pr_err("no preferred mode, use the best one");
+			merr("no preferred mode, use the best one");
 			drm_state_mode = best_mode;
 		} else {
-			pr_err("failed to find a suitable mode");
+			merr("failed to find a suitable mode");
 			goto error_free_connector;
 		}
 	}
 
-	pr_info("final mode: \"%s\" %ux%u",
+	trace("final mode: \"%s\" %ux%u",
 		drm_state_mode->name,
 		(unsigned)drm_state_mode->hdisplay,
 		(unsigned)drm_state_mode->vdisplay);
 
-	pr_info("find a connected encoder");
+	trace("find a connected encoder");
 	for (int e = 0; e < connector->count_encoders; e++) {
 		encoder = drmModeGetEncoder(fd, connector->encoders[e]);
 		if (!encoder)
@@ -160,7 +154,7 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 		drmModeFreeEncoder(encoder);
 	}
 
-	pr_info("try to find a sutable encoder");
+	trace("try to find a sutable encoder");
 	for (int e = 0; e < connector->count_encoders; e++) {
 		encoder = drmModeGetEncoder(fd, connector->encoders[e]);
 		if (!encoder)
@@ -174,31 +168,31 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 		drmModeFreeEncoder(encoder);
 	}
 
-	pr_err("failed to find a suitable encoder");
+	merr("failed to find a suitable encoder");
 	goto error_free_connector;
 
 encoder_found:
 
-	pr_info("drmModeGetCrtc()");
+	trace("drmModeGetCrtc()");
 	crtc = drmModeGetCrtc(fd, encoder->crtc_id);
 	if (!crtc) {
-		pr_info("drmModeGetCrtc()");
+		trace("drmModeGetCrtc()");
 		goto error_free_encoder;
 	}
 
-	pr_info("current mode: \"%s\" %ux%u",
+	trace("current mode: \"%s\" %ux%u",
 		crtc->mode.name,
 		(unsigned)crtc->mode.hdisplay,
 		(unsigned)crtc->mode.vdisplay);
 
-	pr_info("gbm_create_device()");
+	trace("gbm_create_device()");
 	drm_state_gbm_device = gbm_create_device(fd);
 	if (!drm_state_gbm_device) {
-		pr_err("Failed to create GBM device\n");
+		merr("Failed to create GBM device\n");
 		goto error_free_crtc;
 	}
 
-	pr_info("gbm device backend: %s", gbm_device_get_backend_name(drm_state_gbm_device));
+	trace("gbm device backend: %s", gbm_device_get_backend_name(drm_state_gbm_device));
 
 	if (h)
 		*h = drm_state_mode->hdisplay;
@@ -237,45 +231,45 @@ void drm_state_done(void)
 	assert(crtc);
 	assert(drm_state_gbm_device);
 
-	pr_info("gbm_device_destroy()");
+	trace("gbm_device_destroy()");
 	gbm_device_destroy(drm_state_gbm_device);
 	drm_state_gbm_device = 0;
 
-	pr_info("drmModeSetCrtc()");
+	trace("drmModeSetCrtc()");
 	err = drmModeSetCrtc(fd, crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, &connector->connector_id, 1, &crtc->mode);
 	if (err < 0)
-		pr_err("failed to restore original CRTC: %d", err);
-	pr_info("drmModeFreeCrtc()");
+		merr("failed to restore original CRTC: %d", err);
+	trace("drmModeFreeCrtc()");
 	drmModeFreeCrtc(crtc);
 	crtc = 0;
 
-	pr_info("drmModeFreeEncoder()");
+	trace("drmModeFreeEncoder()");
 	drmModeFreeEncoder(encoder);
 	encoder = 0;
 
-	pr_info("drmModeFreeConnector()");
+	trace("drmModeFreeConnector()");
 	drmModeFreeConnector(connector);
 	connector = 0;
 
-	pr_info("drmModeFreeResources()");
+	trace("drmModeFreeResources()");
 	drmModeFreeResources(resources);
 	resources = 0;
 
-	pr_info("close()");
+	trace("close()");
 	close(fd);
 	fd = 0;
 }
 
 void *drm_surface_create(uint32_t format)
 {
-	pr_info("gbm_surface_create(h=%u,v=%u,format=%u)", drm_state_mode->hdisplay, drm_state_mode->vdisplay, format);
+	trace("gbm_surface_create(h=%u,v=%u,format=%u)", drm_state_mode->hdisplay, drm_state_mode->vdisplay, format);
 	drm_state_gbm_surface = gbm_surface_create(drm_state_gbm_device,
 		drm_state_mode->hdisplay,
 		drm_state_mode->vdisplay,
 		format,
 		GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	if (!drm_state_gbm_surface) {
-		pr_err("gbm_surface_create()");
+		merr("gbm_surface_create()");
 		goto error;
 	}
 
@@ -287,7 +281,7 @@ error:
 
 void drm_surface_destroy(void)
 {
-	pr_info("gbm_surface_destroy()");
+	trace("gbm_surface_destroy()");
 	gbm_surface_destroy(drm_state_gbm_surface);
 }
 
@@ -317,7 +311,7 @@ static struct fb_state *fb_get_from_bo(struct gbm_bo* bo)
 
 	fb = malloc(sizeof(struct fb_state));
 	if (!fb) {
-		pr_err("alloc()");
+		merr("alloc()");
 		goto error;
 	}
 
@@ -338,7 +332,7 @@ static struct fb_state *fb_get_from_bo(struct gbm_bo* bo)
 	int err = drmModeAddFB2(fd, width, height, format, handles,
 				strides, offsets, &fb_id, 0);
 	if (err < 0) {
-		pr_err("drmModeAddFB2(): %d", err);
+		merr("drmModeAddFB2(): %d", err);
 		goto error_fb_state_free;
 	}
 
@@ -381,13 +375,13 @@ int drm_state_flip(void)
 
 	bo = gbm_surface_lock_front_buffer(drm_state_gbm_surface);
 	if (!bo) {
-		pr_err("failed to get gbm front buffer");
+		merr("failed to get gbm front buffer");
 		return -1;
 	}
 
 	fb = fb_get_from_bo(bo);
 	if (!fb) {
-		pr_err("fb_get_from_bo()");
+		merr("fb_get_from_bo()");
 		goto error;
 	}
 
@@ -395,14 +389,14 @@ int drm_state_flip(void)
 		err = drmModeSetCrtc(fd, encoder->crtc_id, fb->fb_id, 0, 0,
 				     &connector->connector_id, 1, drm_state_mode);
 		if (err < 0) {
-			pr_err("drmModeSetCrtc(): %d", err);
+			merr("drmModeSetCrtc(): %d", err);
 			goto error;
 		}
 		crtc_set = 1;
 	} else {
 		err = drmModePageFlip(fd, encoder->crtc_id, fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, NULL);
 		if (err < 0) {
-			pr_err("drmModePageFlip(): %d", err);
+			merr("drmModePageFlip(): %d", err);
 			goto error;
 		}
 
@@ -418,14 +412,14 @@ int drm_state_flip(void)
 		if (err == 1) {
 			drmHandleEvent(fd, &ev_ctx);
 		} else if (err == 0) {
-			pr_err("select(): timeout");
+			merr("select(): timeout");
 			goto error;
 		} else {
 			if (err < 0)
-				pr_err("select() (%s)", strerror(errno));
+				merr("select() (%s)", strerror(errno));
 
 			else
-				pr_err("select() ???");
+				merr("select() ???");
 			goto error;
 		}
 	}

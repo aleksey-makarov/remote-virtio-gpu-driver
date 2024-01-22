@@ -9,6 +9,8 @@
   epoxy,
   glm,
   virglrenderer,
+  mesa,
+  libdrm
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
@@ -29,6 +31,8 @@ stdenv.mkDerivation rec {
     epoxy
     glm
     virglrenderer
+    mesa
+    libdrm
   ];
 
   meta = with lib; {
