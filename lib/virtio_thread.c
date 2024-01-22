@@ -47,6 +47,7 @@ static inline struct queue_thread *thread_to_queue_thread(struct es_thread *th)
 static struct es_thread notify_thread;
 
 // called from the main thread
+// FIXME: separate adding and kicking
 void virtio_thread_request_done(struct virtio_thread_request *req)
 {
 	assert(req);
