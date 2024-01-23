@@ -18,11 +18,6 @@
 #define __unused __attribute__((unused))
 #endif
 
-static const char * device_name_default = "/dev/dri/card2";
-static const char * device_name_env_var_name = "LIBUHMIGL_DEVICE_NAME";
-
-static const char * connector_number_env_var_name = "LIBUHMIGL_CONNECTOR_NUMBER";
-
 static int fd;
 static drmModeRes *resources;
 static drmModeConnector *connector;
@@ -42,7 +37,7 @@ struct fb_state {
 	struct fb_state *next;
 };
 
-void *drm_state_init(uint16_t *h, uint16_t *v)
+void *drm_state_init(const char *device_name, unsigned int connector_number, uint16_t *h, uint16_t *v)
 {
 	assert(!fd);
 	assert(!resources);
@@ -52,19 +47,10 @@ void *drm_state_init(uint16_t *h, uint16_t *v)
 	assert(!drm_state_gbm_device);
 	assert(!drm_state_gbm_surface);
 
-	const char * device_name = getenv(device_name_env_var_name);
-	if (!device_name)
-		device_name = device_name_default;
-
-	int connector_number = 0;
-	const char * connector_number_string = getenv(connector_number_env_var_name);
-	if (connector_number_string)
-		connector_number = atoi(connector_number_string);
-
 	trace("open(%s) (connector number: %d)", device_name, connector_number);
 	fd = open(device_name, O_RDWR);
 	if (fd < 0) {
-		merr("open(%s) (%s) (device could be specified with %s environment variable)", device_name, strerror(errno), device_name_env_var_name);
+		merr_errno("open(%s)", device_name);
 		fd = 0;
 		goto error;
 	}
@@ -430,4 +416,9 @@ int drm_state_flip(void)
 error:
 	gbm_surface_release_buffer(drm_state_gbm_surface, bo);
 	return -1;
+}
+
+int drm_state_get_fd(void)
+{
+	return fd;
 }

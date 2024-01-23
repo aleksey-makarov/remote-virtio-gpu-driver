@@ -98,6 +98,8 @@ CMDDB
 #undef _RY
 #undef _RN
 
+uint16_t width, heigth;
+
 // r - guest to device
 // w - device to guest
 static struct iovec *r;
@@ -110,8 +112,8 @@ static unsigned int cmd_GET_DISPLAY_INFO(struct virtio_gpu_ctrl_hdr *cmd, struct
 	(void)cmd;
 
 	// FIXME: where should we get the size from?
-	resp->pmodes[0].r.height = 800;
-	resp->pmodes[0].r.width = 1200;
+	resp->pmodes[0].r.width = width;
+	resp->pmodes[0].r.height = heigth;
 	resp->pmodes[0].enabled = 1;
 
 	// trace("heigth=%u, width=%u", resp->pmodes[0].r.height, resp->pmodes[0].r.width);
