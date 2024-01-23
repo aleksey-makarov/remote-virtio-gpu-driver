@@ -14,6 +14,7 @@
 #include <virgl/virglrenderer.h>
 #include <epoxy/gl.h>
 
+#include "drm_state.h"
 #include "gettid.h"
 #include "epoll_scheduler.h"
 #include "virtio_thread.h"
@@ -21,7 +22,6 @@
 #include "merr.h"
 
 static const char *drm_device = "/dev/dri/card0";
-static int drm_device_fd;
 
 static void test_write_fence(void *cookie, uint32_t fence)
 {
@@ -56,7 +56,8 @@ static int test_get_drm_fd(void *cookie)
 {
 	(void)cookie;
 	trace();
-	return drm_device_fd;
+	return drm_state_get_fd();
+
 }
 
 #if 0
@@ -237,6 +238,7 @@ static unsigned int get_num_capsets(void)
 
 int main(int argc, char **argv)
 {
+	void *native_display;
 	struct es *es;
 	int err;
 
@@ -249,12 +251,14 @@ int main(int argc, char **argv)
 	if (argc == 2)
 		drm_device = argv[1];
 
-	trace("open(\"%s\")", drm_device);
-	drm_device_fd = open(drm_device, O_RDWR);
-	if (drm_device_fd < 0) {
-		merr_errno("open(\"%s\")", drm_device);
+	trace("drm_state_init(\"%s\")", drm_device);
+	native_display = drm_state_init(drm_device, 0, &width, &heigth);
+	if (!native_display) {
+		merr("native_display()");
 		goto err_close_efd;
 	}
+
+	trace("%hux%hu", width, heigth);
 
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
@@ -262,7 +266,7 @@ int main(int argc, char **argv)
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		merr("virgl_renderer_init(): %s", strerror(err));
-		goto err_close_drm;
+		goto err_drm_state_done;
 	}
 
 	unsigned int num_capsets = get_num_capsets();
@@ -293,7 +297,8 @@ int main(int argc, char **argv)
 
 	virtio_thread_stop();
 	virgl_renderer_cleanup(NULL);
-	close(drm_device_fd);
+	drm_state_done();
+
 	close(notify_thread.fd);
 	exit(EXIT_SUCCESS);
 
@@ -301,8 +306,8 @@ err_stop_virtio_thread:
 	virtio_thread_stop();
 err_virgl_cleanup:
 	virgl_renderer_cleanup(NULL);
-err_close_drm:
-	close(drm_device_fd);
+err_drm_state_done:
+	drm_state_done();
 err_close_efd:
 	close(notify_thread.fd);
 err:
