@@ -11,9 +11,12 @@
 
 #include <linux/virtio_gpu.h>
 
+#include <gbm.h>
 #include <virgl/virglrenderer.h>
+#include <epoxy/egl.h>
 #include <epoxy/gl.h>
 
+#include "egl_helpers.h"
 #include "drm_state.h"
 #include "gettid.h"
 #include "epoll_scheduler.h"
@@ -260,13 +263,124 @@ int main(int argc, char **argv)
 
 	trace("%hux%hu", width, heigth);
 
+	EGLDisplay display = eglGetDisplay(native_display);
+	if (display == EGL_NO_DISPLAY)
+		EGL_CHECK_ERROR("eglGetDisplay()", err_drm_state_done);
+
+	trace("eglInitialize()");
+	EGLint major, minor;
+	EGL_RET(eglInitialize(display, &major, &minor), err_egl_terminate);
+	trace("EGL: %d.%d", (int)major, (int)minor);
+
+	trace("eglBindAPI(EGL_OPENGL_ES_API)");
+	EGL_RET(eglBindAPI(EGL_OPENGL_ES_API), err_egl_terminate);
+
+	static const EGLint config_attrs[] =
+		{    EGL_SURFACE_TYPE, EGL_WINDOW_BIT
+		,        EGL_RED_SIZE, 8
+		,      EGL_GREEN_SIZE, 8
+		,       EGL_BLUE_SIZE, 8
+		,      EGL_CONFORMANT, EGL_OPENGL_ES2_BIT
+		, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT
+		,            EGL_NONE
+		};
+
+	EGLint num_config;
+	EGLint num_config2;
+
+	trace("eglChooseConfig(0)");
+	EGL_RET(eglChooseConfig(display, config_attrs, NULL, 0, &num_config), err_egl_terminate);
+	if (num_config < 1) {
+		merr("num_config < 1");
+		goto err_egl_terminate;
+	}
+
+	EGLConfig *configs = calloc(num_config, sizeof(EGLConfig));
+	if (!configs) {
+		merr("calloc()");
+		goto err_egl_terminate;
+	}
+
+	trace("eglChooseConfig(%u)", num_config);
+	EGL_RET(eglChooseConfig(display, config_attrs, configs, num_config, &num_config2), err_free_configs);
+	if (num_config != num_config2) {
+		merr("num_config != num_config2");
+		goto err_free_configs;
+	}
+
+#define GET_ATTRIBUTE(NAME) \
+		EGLint attr_ ## NAME; \
+		EGL_RET(eglGetConfigAttrib(display, configs[i], EGL_ ## NAME, & attr_ ## NAME), err_free_configs);
+
+	int i;
+	int valid_config_index = -1;
+
+	for (i = 0; i < num_config; i++) {
+
+		GET_ATTRIBUTE(NATIVE_VISUAL_ID);
+
+		if (valid_config_index == -1 && attr_NATIVE_VISUAL_ID == GBM_FORMAT_XRGB8888) {
+			valid_config_index = i;
+
+			GET_ATTRIBUTE(CONFIG_ID);
+			GET_ATTRIBUTE(BUFFER_SIZE);
+			GET_ATTRIBUTE(ALPHA_SIZE);
+			GET_ATTRIBUTE(RED_SIZE);
+			GET_ATTRIBUTE(GREEN_SIZE);
+			GET_ATTRIBUTE(BLUE_SIZE);
+			GET_ATTRIBUTE(DEPTH_SIZE);
+			GET_ATTRIBUTE(STENCIL_SIZE);
+			GET_ATTRIBUTE(SAMPLES);
+
+			char format_string[5];
+			format_string[0] = (char)((attr_NATIVE_VISUAL_ID >>  0) & 0xff);
+			format_string[1] = (char)((attr_NATIVE_VISUAL_ID >>  8) & 0xff);
+			format_string[2] = (char)((attr_NATIVE_VISUAL_ID >> 16) & 0xff);
+			format_string[3] = (char)((attr_NATIVE_VISUAL_ID >> 24) & 0xff);
+			format_string[4] = 0;
+
+			trace("id: %u, format=%u (\"%s\"), buffer_size=%u, alpha=%u, red=%u, green=%u, blue=%u, depth=%u, stencil=%u, samples=%u",
+				attr_CONFIG_ID, attr_NATIVE_VISUAL_ID, format_string,
+				attr_BUFFER_SIZE, attr_ALPHA_SIZE, attr_RED_SIZE, attr_GREEN_SIZE, attr_BLUE_SIZE, attr_DEPTH_SIZE, attr_STENCIL_SIZE, attr_SAMPLES
+			);
+
+			break;
+		}
+	}
+
+#undef GET_ATTRIBUTE
+
+	if (valid_config_index == -1) {
+		merr("could not find a good configuration");
+		goto err_free_configs;
+	}
+
+	EGLint attr_native_visual_id;
+	EGL_RET(eglGetConfigAttrib(display, configs[valid_config_index], EGL_NATIVE_VISUAL_ID, & attr_native_visual_id), err_free_configs);
+
+	trace("drm_surface_create(%u)", attr_native_visual_id);
+	void *native_surface = drm_surface_create((uint32_t)attr_native_visual_id);
+	if (!native_surface) {
+		merr("drm_surface_create()");
+		goto err_free_configs;
+	}
+
+	// --------------------------------------------------------
+	//
+	// FIXME
+	(void)native_surface;
+	//
+	// --------------------------------------------------------
+
+
+
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
 	// For some reason cookie can not be NULL
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		merr("virgl_renderer_init(): %s", strerror(err));
-		goto err_drm_state_done;
+		goto err_free_configs;
 	}
 
 	unsigned int num_capsets = get_num_capsets();
@@ -297,8 +411,9 @@ int main(int argc, char **argv)
 
 	virtio_thread_stop();
 	virgl_renderer_cleanup(NULL);
+	free(configs);
+	eglTerminate(display);
 	drm_state_done();
-
 	close(notify_thread.fd);
 	exit(EXIT_SUCCESS);
 
@@ -306,6 +421,10 @@ err_stop_virtio_thread:
 	virtio_thread_stop();
 err_virgl_cleanup:
 	virgl_renderer_cleanup(NULL);
+err_free_configs:
+	free(configs);
+err_egl_terminate:
+	eglTerminate(display);
 err_drm_state_done:
 	drm_state_done();
 err_close_efd:

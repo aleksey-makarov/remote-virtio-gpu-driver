@@ -10,7 +10,7 @@
   glm,
   virglrenderer,
   mesa,
-  libdrm
+  libdrm,
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
