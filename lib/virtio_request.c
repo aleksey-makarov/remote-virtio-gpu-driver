@@ -161,6 +161,9 @@ static unsigned int cmd_RESOURCE_UNREF(struct virtio_gpu_resource_unref *cmd, st
 	return sizeof(*resp);
 }
 
+struct virgl_renderer_resource_info current_scanout_info;
+struct current_scanout current_scanout;
+
 static unsigned int cmd_SET_SCANOUT(struct virtio_gpu_set_scanout *cmd, struct virtio_gpu_ctrl_hdr *resp)
 {
 	// FIXME: pretend we have just 1 scanout right now
@@ -171,20 +174,30 @@ static unsigned int cmd_SET_SCANOUT(struct virtio_gpu_set_scanout *cmd, struct v
 	}
 
 	if (!cmd->resource_id || !cmd->r.width || !cmd->r.height) {
-		trace("FIXME: hide window: resource_id=%u, width=%u, heigth=%u", cmd->resource_id, cmd->r.width, cmd->r.height);
+		trace("hide window: resource_id=%u, width=%u, heigth=%u", cmd->resource_id, cmd->r.width, cmd->r.height);
 		resp->type = VIRTIO_GPU_RESP_OK_NODATA;
 		goto out;
 	}
 
-	struct virgl_renderer_resource_info info;
-	int ret = virgl_renderer_resource_get_info(cmd->resource_id, &info);
+	int ret = virgl_renderer_resource_get_info(cmd->resource_id, &current_scanout_info);
 	if (ret == -1) {
 		merr("virgl_renderer_resource_get_info(resource_id=%u)", cmd->resource_id);
 		resp->type = VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID;
 		goto out;
 	}
 
-	trace("FIXME: set window: resource=%ux%u, box=%ux%u@%u,%u", info.width, info.height, cmd->r.width, cmd->r.height, cmd->r.x, cmd->r.y);
+	current_scanout.x = cmd->r.x;
+	current_scanout.y = cmd->r.y;
+	current_scanout.width = cmd->r.width;
+	current_scanout.height = cmd->r.height;
+	current_scanout.scanout_id = cmd->scanout_id;
+	current_scanout.resource_id = cmd->resource_id;
+
+	if (current_scanout_info.tex_id)
+		trace("*** tex_id");
+
+	trace("resource_id=%u, box=%ux%u@%u,%u, tex_id=%u", cmd->resource_id, cmd->r.width, cmd->r.height, cmd->r.x, cmd->r.y, current_scanout_info.tex_id);
+
 	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
 
 out:
@@ -194,7 +207,8 @@ out:
 static unsigned int cmd_RESOURCE_FLUSH(struct virtio_gpu_resource_flush *cmd, struct virtio_gpu_ctrl_hdr *resp)
 {
 	(void)cmd;
-	trace("FIXME: flush: resource_id=%u, box=%ux%u@%u,%u", cmd->resource_id, cmd->r.width, cmd->r.height, cmd->r.x, cmd->r.y);
+	trace("resource_id=%u, box=%ux%u@%u,%u", cmd->resource_id, cmd->r.width, cmd->r.height, cmd->r.x, cmd->r.y);
+	draw();
 	resp->type = VIRTIO_GPU_RESP_OK_NODATA;
 	return sizeof(*resp);
 }
