@@ -28,7 +28,7 @@ static const char *drm_device = "/dev/dri/card0";
 
 static EGLDisplay egl_display;
 static EGLConfig egl_config;
-static EGLContext egl_context;
+static EGLContext egl_current_context = EGL_NO_CONTEXT;
 static EGLSurface egl_surface;
 bool egl_surface_initialized = false;
 
@@ -67,7 +67,10 @@ static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanou
 {
 	(void)cookie;
 
-	trace("scanout=%d, ver=%d.%d, shared=%s", scanout_idx, param->major_ver, param->minor_ver, param->shared ? "ture" : "false");
+	trace("*** CREATE scanout=%d, ver=%d.%d, shared=%s", scanout_idx, param->major_ver, param->minor_ver, param->shared ? "ture" : "false");
+
+	virgl_renderer_gl_context ctx = EGL_NO_CONTEXT;
+	EGLContext shared_context = EGL_NO_CONTEXT;
 
 	EGLint ctxattr[] =
 		{ EGL_CONTEXT_MAJOR_VERSION_KHR, param->major_ver
@@ -75,20 +78,43 @@ static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanou
 		, EGL_NONE
 		};
 
-	return eglCreateContext(egl_display, egl_config,
-				param->shared ? eglGetCurrentContext() : egl_context,
-				ctxattr);
+	if (param->shared) {
+		shared_context = eglGetCurrentContext();
+		if (shared_context == EGL_NO_CONTEXT)
+			EGL_CHECK_ERROR("eglGetCurrentContext()", out);
+	}
+
+	egl_current_context = ctx = eglCreateContext(egl_display, egl_config, shared_context, ctxattr);
+	if (ctx == EGL_NO_CONTEXT)
+		EGL_CHECK_ERROR("eglCreateContext()", out);
+
+out:
+	trace("0x%016lx", (unsigned long)ctx);
+	return ctx;
+
+	// (void)scanout_idx;
+	// (void)param;
+	// return 0;
 }
 
 static void test_destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
 {
+
 	(void)cookie;
 	(void)ctx;
 
-	trace();
+	trace("*** DESTROY 0x%016lx", (unsigned long)ctx);
 
-	eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-	eglDestroyContext(egl_display, ctx);
+	EGL_RET(eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT), out);
+	EGL_RET(eglDestroyContext(egl_display, ctx), out);
+
+	if (egl_current_context == ctx) {
+		trace("??? destroying current context");
+		egl_current_context = EGL_NO_CONTEXT;
+	}
+
+out:
+	return;
 }
 
 static int test_make_current(void *cookie, int scanout_idx, virgl_renderer_gl_context ctx)
@@ -97,10 +123,13 @@ static int test_make_current(void *cookie, int scanout_idx, virgl_renderer_gl_co
 	(void)scanout_idx;
 	(void)ctx;
 
-	trace();
+	trace("*** MAKE CURRENT 0x%016lx", (unsigned long)ctx);
 
-	eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx);
+	egl_current_context = ctx;
 
+	EGL_RET(eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx), out);
+
+out:
 	return 0;
 }
 
@@ -203,7 +232,7 @@ static void check_ready_requests(void)
 	while (!STAILQ_EMPTY(&virtio_request_ready)) {
 		struct virtio_thread_request *req = STAILQ_FIRST(&virtio_request_ready);
 		STAILQ_REMOVE_HEAD(&virtio_request_ready, queue_entry);
-		trace("S%u done", req->serial);
+		// trace("S%u done", req->serial);
 		virtio_thread_request_done(req);
 	}
 }
@@ -231,7 +260,7 @@ static int notify_go(struct es_thread *self, uint32_t events)
 		struct virtio_thread_request *req = STAILQ_FIRST(&tmp_queue);
 		STAILQ_REMOVE_HEAD(&tmp_queue, queue_entry);
 
-		// trace("(3) %d put %d", req->serial, gettid());
+		// trace("S%d put %d", req->serial, gettid());
 
 		virtio_request(req);
 		check_ready_requests();
@@ -251,7 +280,7 @@ static struct es_thread notify_thread = {
 // called from the helper thread
 void virtio_thread_new_request(struct virtio_thread_request *req)
 {
-	// trace("(2) %d put %d", req->serial, gettid());
+	// trace("S%d put %d", req->serial, gettid());
 
 	pthread_mutex_lock(&req_queue_mutex);
 	STAILQ_INSERT_TAIL(&req_queue, req, queue_entry);
@@ -282,7 +311,7 @@ void draw(void)
 		egl_surface_initialized = true;
 	}
 
-	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context), out);
+	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_current_context), out);
 	EGL_RET(eglSwapInterval(egl_display, 0), out);
 	trace("vierport %ux%u@0,0", current_scanout.width, current_scanout.height);
 	glViewport(0, 0, current_scanout.width, current_scanout.height);
@@ -422,20 +451,22 @@ int main(int argc, char **argv)
 		goto err_free_configs;
 	}
 
-	EGLint ctxattr[] = { EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
-			     EGL_CONTEXT_MINOR_VERSION_KHR, 0, EGL_NONE };
-
-	egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, ctxattr);
-	if (egl_context == EGL_NO_CONTEXT)
-		EGL_CHECK_ERROR("eglCreateContext()", err_drm_surface_destroy);
+	// EGLint ctxattr[] = { EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
+	// 		     EGL_CONTEXT_MINOR_VERSION_KHR, 0, EGL_NONE };
+	// egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, ctxattr);
+	// if (egl_context == EGL_NO_CONTEXT)
+	// 	EGL_CHECK_ERROR("eglCreateContext()", err_drm_surface_destroy);
+	// trace("*** CONTEXT 0x%016lx", (unsigned long)egl_context);
 
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
 	// For some reason cookie can not be NULL
-	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
+	// err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
+	err = virgl_renderer_init((void *)1, 0, &virgl_cbs);
 	if (err < 0) {
 		merr("virgl_renderer_init(): %s", strerror(err));
-		goto err_egl_destroy_context;
+		// goto err_egl_destroy_context;
+		goto err_drm_surface_destroy;
 	}
 
 	unsigned int num_capsets = get_num_capsets();
@@ -466,7 +497,7 @@ int main(int argc, char **argv)
 
 	virtio_thread_stop();
 	virgl_renderer_cleanup(NULL);
-	eglDestroyContext(egl_display, egl_context);
+	// eglDestroyContext(egl_display, egl_context);
 	drm_surface_destroy();
 	free(configs);
 	eglTerminate(egl_display);
@@ -478,8 +509,8 @@ err_stop_virtio_thread:
 	virtio_thread_stop();
 err_virgl_cleanup:
 	virgl_renderer_cleanup(NULL);
-err_egl_destroy_context:
-	eglDestroyContext(egl_display, egl_context);
+// err_egl_destroy_context:
+// 	eglDestroyContext(egl_display, egl_context);
 err_drm_surface_destroy:
 	drm_surface_destroy();
 err_free_configs:
