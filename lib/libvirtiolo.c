@@ -163,6 +163,7 @@ struct vlo *vlo_init(
 	}
 
 	for (i = 0; i < qinfosn; i++) {
+		ret->vrings[i].last_avail_idx = 0;
 		ret->vrings[i].kick_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 		if (ret->vrings[i].kick_fd == -1) {
 			merr_errno("eventfd(kick_fd)");
