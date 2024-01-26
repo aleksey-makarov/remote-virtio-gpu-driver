@@ -26,6 +26,14 @@
 
 static const char *drm_device = "/dev/dri/card0";
 
+static EGLDisplay egl_display;
+static EGLConfig egl_config;
+static EGLContext egl_context;
+static EGLSurface egl_surface;
+bool egl_surface_initialized = false;
+
+static void *native_surface;
+
 static void test_write_fence(void *cookie, uint32_t fence)
 {
 	(void)cookie;
@@ -55,6 +63,48 @@ static void test_write_fence(void *cookie, uint32_t fence)
 	}
 }
 
+static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanout_idx, struct virgl_renderer_gl_ctx_param *param)
+{
+	(void)cookie;
+
+	trace("scanout=%d, ver=%d.%d, shared=%s", scanout_idx, param->major_ver, param->minor_ver, param->shared ? "ture" : "false");
+
+	EGLint ctxattr[] =
+		{ EGL_CONTEXT_MAJOR_VERSION_KHR, param->major_ver
+		, EGL_CONTEXT_MINOR_VERSION_KHR, param->minor_ver
+		, EGL_NONE
+		};
+
+	return eglCreateContext(egl_display, egl_config,
+				param->shared ? eglGetCurrentContext() : egl_context,
+				ctxattr);
+}
+
+static void test_destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
+{
+	(void)cookie;
+	(void)ctx;
+
+	trace();
+
+	eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	eglDestroyContext(egl_display, ctx);
+}
+
+static int test_make_current(void *cookie, int scanout_idx, virgl_renderer_gl_context ctx)
+{
+	(void)cookie;
+	(void)scanout_idx;
+	(void)ctx;
+
+	trace();
+
+	eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx);
+
+	return 0;
+}
+
+#if 0
 static int test_get_drm_fd(void *cookie)
 {
 	(void)cookie;
@@ -62,38 +112,18 @@ static int test_get_drm_fd(void *cookie)
 	return drm_state_get_fd();
 
 }
-
-#if 0
-static virgl_renderer_gl_context create_gl_context(void *cookie, int scanout_idx, struct virgl_renderer_gl_ctx_param *param)
-{ return NULL; }
-static void destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
-{}
-static int make_current(void *cookie, int scanout_idx, virgl_renderer_gl_context ctx)
-{ return 0; }
 #endif
 
 struct virgl_renderer_callbacks virgl_cbs = {
-	.version = 2,
-	.write_fence = test_write_fence,
-#if 0
-	/*
-	 * The following 3 callbacks allows virglrenderer to
-	 * use winsys from caller, instead of initializing it's own
-	 * winsys (flag VIRGL_RENDERER_USE_EGL or VIRGL_RENDERER_USE_GLX).
-	 */
-	/* create a GL/GLES context */
-	virgl_renderer_gl_context (*create_gl_context)(void *cookie, int scanout_idx, struct virgl_renderer_gl_ctx_param *param);
-	/* destroy a GL/GLES context */
-	void (*destroy_gl_context)(void *cookie, virgl_renderer_gl_context ctx);
-	/* make a context current, returns 0 on success and negative errno on failure */
-	int (*make_current)(void *cookie, int scanout_idx, virgl_renderer_gl_context ctx);
-#else
-	.create_gl_context = NULL,
-	.destroy_gl_context = NULL,
-	.make_current = NULL,
+	.version = 1,
 
-#endif
-	.get_drm_fd = test_get_drm_fd,
+	.write_fence = test_write_fence,
+
+	.create_gl_context  = test_create_gl_context,
+	.destroy_gl_context = test_destroy_gl_context,
+	.make_current       = test_make_current,
+
+	// .get_drm_fd = test_get_drm_fd,
 };
 
 static const char *virgl_log_level_to_string(enum virgl_log_level_flags l)
@@ -239,6 +269,33 @@ static unsigned int get_num_capsets(void)
 	return capset2_max_ver ? 2 : 1;
 }
 
+void draw(void)
+{
+	trace();
+
+	if (!egl_surface_initialized) {
+		trace("initialize surface");
+		egl_surface = eglCreateWindowSurface(egl_display, egl_config, native_surface, NULL);
+		if (egl_surface == EGL_NO_SURFACE)
+			EGL_CHECK_ERROR("eglCreateWindowSurface()", out);
+		// glGenFramebuffers(1, &s->fb);
+		egl_surface_initialized = true;
+	}
+
+	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context), out);
+	EGL_RET(eglSwapInterval(egl_display, 0), out);
+	trace("vierport %ux%u@0,0", current_scanout.width, current_scanout.height);
+	glViewport(0, 0, current_scanout.width, current_scanout.height);
+	EGL_RET(eglSwapBuffers(egl_display, egl_surface), out);
+
+	int err = drm_state_flip();
+	if (err)
+		merr("drm_state_flip()");
+
+out:
+	return;
+}
+
 int main(int argc, char **argv)
 {
 	void *native_display;
@@ -263,13 +320,13 @@ int main(int argc, char **argv)
 
 	trace("%hux%hu", width, heigth);
 
-	EGLDisplay display = eglGetDisplay(native_display);
-	if (display == EGL_NO_DISPLAY)
+	egl_display = eglGetDisplay(native_display);
+	if (egl_display == EGL_NO_DISPLAY)
 		EGL_CHECK_ERROR("eglGetDisplay()", err_drm_state_done);
 
 	trace("eglInitialize()");
 	EGLint major, minor;
-	EGL_RET(eglInitialize(display, &major, &minor), err_egl_terminate);
+	EGL_RET(eglInitialize(egl_display, &major, &minor), err_egl_terminate);
 	trace("EGL: %d.%d", (int)major, (int)minor);
 
 	trace("eglBindAPI(EGL_OPENGL_ES_API)");
@@ -289,7 +346,7 @@ int main(int argc, char **argv)
 	EGLint num_config2;
 
 	trace("eglChooseConfig(0)");
-	EGL_RET(eglChooseConfig(display, config_attrs, NULL, 0, &num_config), err_egl_terminate);
+	EGL_RET(eglChooseConfig(egl_display, config_attrs, NULL, 0, &num_config), err_egl_terminate);
 	if (num_config < 1) {
 		merr("num_config < 1");
 		goto err_egl_terminate;
@@ -302,7 +359,7 @@ int main(int argc, char **argv)
 	}
 
 	trace("eglChooseConfig(%u)", num_config);
-	EGL_RET(eglChooseConfig(display, config_attrs, configs, num_config, &num_config2), err_free_configs);
+	EGL_RET(eglChooseConfig(egl_display, config_attrs, configs, num_config, &num_config2), err_free_configs);
 	if (num_config != num_config2) {
 		merr("num_config != num_config2");
 		goto err_free_configs;
@@ -310,17 +367,17 @@ int main(int argc, char **argv)
 
 #define GET_ATTRIBUTE(NAME) \
 		EGLint attr_ ## NAME; \
-		EGL_RET(eglGetConfigAttrib(display, configs[i], EGL_ ## NAME, & attr_ ## NAME), err_free_configs);
+		EGL_RET(eglGetConfigAttrib(egl_display, configs[i], EGL_ ## NAME, & attr_ ## NAME), err_free_configs);
 
-	int i;
-	int valid_config_index = -1;
-
-	for (i = 0; i < num_config; i++) {
+	bool config_found = false;
+	for (int i = 0; i < num_config; i++) {
 
 		GET_ATTRIBUTE(NATIVE_VISUAL_ID);
 
-		if (valid_config_index == -1 && attr_NATIVE_VISUAL_ID == GBM_FORMAT_XRGB8888) {
-			valid_config_index = i;
+		if (!config_found && attr_NATIVE_VISUAL_ID == GBM_FORMAT_XRGB8888) {
+
+			config_found = true;
+			egl_config = configs[i];
 
 			GET_ATTRIBUTE(CONFIG_ID);
 			GET_ATTRIBUTE(BUFFER_SIZE);
@@ -350,29 +407,27 @@ int main(int argc, char **argv)
 
 #undef GET_ATTRIBUTE
 
-	if (valid_config_index == -1) {
+	if (!config_found) {
 		merr("could not find a good configuration");
 		goto err_free_configs;
 	}
 
 	EGLint attr_native_visual_id;
-	EGL_RET(eglGetConfigAttrib(display, configs[valid_config_index], EGL_NATIVE_VISUAL_ID, & attr_native_visual_id), err_free_configs);
+	EGL_RET(eglGetConfigAttrib(egl_display, egl_config, EGL_NATIVE_VISUAL_ID, &attr_native_visual_id), err_free_configs);
 
 	trace("drm_surface_create(%u)", attr_native_visual_id);
-	void *native_surface = drm_surface_create((uint32_t)attr_native_visual_id);
+	native_surface = drm_surface_create((uint32_t)attr_native_visual_id);
 	if (!native_surface) {
 		merr("drm_surface_create()");
 		goto err_free_configs;
 	}
 
-	// --------------------------------------------------------
-	//
-	// FIXME
-	(void)native_surface;
-	//
-	// --------------------------------------------------------
+	EGLint ctxattr[] = { EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
+			     EGL_CONTEXT_MINOR_VERSION_KHR, 0, EGL_NONE };
 
-
+	egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, ctxattr);
+	if (egl_context == EGL_NO_CONTEXT)
+		EGL_CHECK_ERROR("eglCreateContext()", err_drm_surface_destroy);
 
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
@@ -380,7 +435,7 @@ int main(int argc, char **argv)
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
 	if (err < 0) {
 		merr("virgl_renderer_init(): %s", strerror(err));
-		goto err_free_configs;
+		goto err_egl_destroy_context;
 	}
 
 	unsigned int num_capsets = get_num_capsets();
@@ -411,8 +466,10 @@ int main(int argc, char **argv)
 
 	virtio_thread_stop();
 	virgl_renderer_cleanup(NULL);
+	eglDestroyContext(egl_display, egl_context);
+	drm_surface_destroy();
 	free(configs);
-	eglTerminate(display);
+	eglTerminate(egl_display);
 	drm_state_done();
 	close(notify_thread.fd);
 	exit(EXIT_SUCCESS);
@@ -421,10 +478,14 @@ err_stop_virtio_thread:
 	virtio_thread_stop();
 err_virgl_cleanup:
 	virgl_renderer_cleanup(NULL);
+err_egl_destroy_context:
+	eglDestroyContext(egl_display, egl_context);
+err_drm_surface_destroy:
+	drm_surface_destroy();
 err_free_configs:
 	free(configs);
 err_egl_terminate:
-	eglTerminate(display);
+	eglTerminate(egl_display);
 err_drm_state_done:
 	drm_state_done();
 err_close_efd:
