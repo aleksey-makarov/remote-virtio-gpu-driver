@@ -240,11 +240,29 @@ out:
 	return 0;
 }
 
+static int poll_go(struct es_thread *self, uint32_t events)
+{
+	(void)self;
+	(void)events;
+
+	virgl_renderer_poll();
+
+	return 0;
+}
+
 static struct es_thread notify_thread = {
 	.name   = "notify",
 	.events = EPOLLIN,
 	.test   = test_wait,
 	.go     = notify_go,
+	.done   = NULL,
+};
+
+static struct es_thread virgl_poll_thread = {
+	.name   = "virgl_poll",
+	.events = EPOLLIN,
+	.test   = test_wait,
+	.go     = poll_go,
 	.done   = NULL,
 };
 
@@ -432,10 +450,17 @@ int main(int argc, char **argv)
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
 	// For some reason cookie can not be NULL
-	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
+	// err = virgl_renderer_init((void *)1, VIRGL_RENDERER_USE_EGL, &virgl_cbs);
+	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_THREAD_SYNC, &virgl_cbs);
 	if (err < 0) {
 		merr("virgl_renderer_init(): %s", strerror(err));
 		goto err_egl_destroy_context;
+	}
+
+	virgl_poll_thread.fd = virgl_renderer_get_poll_fd();
+	if (virgl_poll_thread.fd < 0) {
+		merr_errno("virgl_renderer_get_poll_fd()");
+		goto err_virgl_cleanup;
 	}
 
 	unsigned int num_capsets = get_num_capsets();
@@ -452,6 +477,7 @@ int main(int argc, char **argv)
 
 	es = es_init(
 		&notify_thread,
+		&virgl_poll_thread,
 		NULL);
 	if (!es) {
 		merr("es_init()");

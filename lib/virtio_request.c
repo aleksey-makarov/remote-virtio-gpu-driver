@@ -547,7 +547,6 @@ void virtio_request(struct virtio_thread_request *req)
 		goto err;
 	}
 
-	virgl_renderer_poll();
 	virgl_renderer_force_ctx_0();
 
 	// FIXME: check mapping (readonly, writeonly)
