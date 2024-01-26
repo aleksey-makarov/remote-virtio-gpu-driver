@@ -320,7 +320,7 @@ static unsigned int cmd_RESOURCE_DETACH_BACKING(struct virtio_gpu_resource_detac
 
 static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, struct virtio_gpu_resp_capset_info *resp)
 {
-	// trace("index=%u", cmd->capset_index);
+	trace("index=%u", cmd->capset_index);
 
 	if (cmd->capset_index == 0) {
 		resp->capset_id = VIRTIO_GPU_CAPSET_VIRGL;
@@ -338,7 +338,7 @@ static unsigned int cmd_GET_CAPSET_INFO(struct virtio_gpu_get_capset_info *cmd, 
 	}
 	resp->hdr.type = VIRTIO_GPU_RESP_OK_CAPSET_INFO;
 
-	// trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
+	trace("id=%u, max_version=%u, max_size=%u", resp->capset_id, resp->capset_max_version, resp->capset_max_size);
 
 	return sizeof(*resp);
 }

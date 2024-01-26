@@ -187,6 +187,8 @@ static int queue_go(struct es_thread *self, uint32_t events)
 	eventfd_t ev;
 	int err;
 
+	// trace("enter");
+
 	unsigned int queue = thread_to_queue_thread(self)->queue_index;
 
 	assert(vlo);
@@ -215,12 +217,12 @@ static int queue_go(struct es_thread *self, uint32_t events)
 		req->queue = queue;
 		req->serial = serial++;
 
-		// trace("(1) %d on %d", req->serial, gettid());
+		// trace("S%d on %d", req->serial, gettid());
 
 		virtio_thread_new_request(req);
 	}
 
-	// trace();
+	// trace("exit");
 out:
 	return 0;
 }
