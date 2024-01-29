@@ -28,9 +28,11 @@ static const char *drm_device = "/dev/dri/card0";
 
 static EGLDisplay egl_display;
 static EGLConfig egl_config;
-static EGLContext egl_current_context = EGL_NO_CONTEXT;
 static EGLSurface egl_surface;
-bool egl_surface_initialized = false;
+
+static EGLContext egl_context = EGL_NO_CONTEXT;
+
+static GLuint gl_framebuffer;
 
 static void *native_surface;
 
@@ -70,7 +72,7 @@ static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanou
 	trace("*** CREATE scanout=%d, ver=%d.%d, shared=%s", scanout_idx, param->major_ver, param->minor_ver, param->shared ? "ture" : "false");
 
 	virgl_renderer_gl_context ctx = EGL_NO_CONTEXT;
-	EGLContext shared_context = EGL_NO_CONTEXT;
+	EGLContext shared_context = egl_context;
 
 	EGLint ctxattr[] =
 		{ EGL_CONTEXT_MAJOR_VERSION_KHR, param->major_ver
@@ -84,17 +86,13 @@ static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanou
 			EGL_CHECK_ERROR("eglGetCurrentContext()", out);
 	}
 
-	egl_current_context = ctx = eglCreateContext(egl_display, egl_config, shared_context, ctxattr);
+	ctx = eglCreateContext(egl_display, egl_config, shared_context, ctxattr);
 	if (ctx == EGL_NO_CONTEXT)
 		EGL_CHECK_ERROR("eglCreateContext()", out);
 
 out:
 	trace("0x%016lx", (unsigned long)ctx);
 	return ctx;
-
-	// (void)scanout_idx;
-	// (void)param;
-	// return 0;
 }
 
 static void test_destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
@@ -108,11 +106,6 @@ static void test_destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
 	EGL_RET(eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT), out);
 	EGL_RET(eglDestroyContext(egl_display, ctx), out);
 
-	if (egl_current_context == ctx) {
-		trace("??? destroying current context");
-		egl_current_context = EGL_NO_CONTEXT;
-	}
-
 out:
 	return;
 }
@@ -124,8 +117,6 @@ static int test_make_current(void *cookie, int scanout_idx, virgl_renderer_gl_co
 	(void)ctx;
 
 	trace("*** MAKE CURRENT 0x%016lx", (unsigned long)ctx);
-
-	egl_current_context = ctx;
 
 	EGL_RET(eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx), out);
 
@@ -318,21 +309,55 @@ static unsigned int get_num_capsets(void)
 
 void draw(void)
 {
-	trace();
+	trace("vierport %ux%u@0,0", current_scanout.width, current_scanout.height);
 
-	if (!egl_surface_initialized) {
-		trace("initialize surface");
-		egl_surface = eglCreateWindowSurface(egl_display, egl_config, native_surface, NULL);
-		if (egl_surface == EGL_NO_SURFACE)
-			EGL_CHECK_ERROR("eglCreateWindowSurface()", out);
-		// glGenFramebuffers(1, &s->fb);
-		egl_surface_initialized = true;
+	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context), out);
+	EGL_RET(eglSwapInterval(egl_display, 0), out);
+
+	glViewport(0, 0, current_scanout.width, current_scanout.height);
+	glClearColor(0.0f, 1.0f, 0.0f, 0.2f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	if (current_scanout_info.tex_id != 0) {
+
+		trace("current_scanout_info.tex_id != 0");
+
+		unsigned int y1, y2;
+
+		// FIXME
+		struct rvgpu_box {
+			unsigned int x, y;
+			unsigned int w, h;
+		} vbox = {
+			.x = 0,
+			.y = 0,
+			.w = 1280,
+			.h = 800,
+		};
+
+		// if (y0_top) {
+		if (current_scanout_info.flags & 1) {
+			y1 = vbox.y;
+			y2 = vbox.y + vbox.h;
+		} else {
+			y1 = vbox.y + vbox.h;
+			y2 = vbox.y;
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, gl_framebuffer);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+				       GL_TEXTURE_2D, current_scanout_info.tex_id, 0);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBlitFramebuffer((int)vbox.x, (int)y1,
+				  (int)(vbox.x + vbox.w), (int)y2, 0, 0,
+				  // (int)s->window.w, (int)s->window.h, FIXME!!!
+				  1280, 800, // FIXME!!!
+				  GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+
+
 	}
 
-	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_current_context), out);
-	EGL_RET(eglSwapInterval(egl_display, 0), out);
-	trace("vierport %ux%u@0,0", current_scanout.width, current_scanout.height);
-	glViewport(0, 0, current_scanout.width, current_scanout.height);
 	EGL_RET(eglSwapBuffers(egl_display, egl_surface), out);
 
 	int err = drm_state_flip();
@@ -469,12 +494,12 @@ int main(int argc, char **argv)
 		goto err_free_configs;
 	}
 
-	// EGLint ctxattr[] = { EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
-	// 		     EGL_CONTEXT_MINOR_VERSION_KHR, 0, EGL_NONE };
-	// egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, ctxattr);
-	// if (egl_context == EGL_NO_CONTEXT)
-	// 	EGL_CHECK_ERROR("eglCreateContext()", err_drm_surface_destroy);
-	// trace("*** CONTEXT 0x%016lx", (unsigned long)egl_context);
+	EGLint ctxattr[] = { EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
+			     EGL_CONTEXT_MINOR_VERSION_KHR, 0, EGL_NONE };
+	egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, ctxattr);
+	if (egl_context == EGL_NO_CONTEXT)
+		EGL_CHECK_ERROR("eglCreateContext()", err_drm_surface_destroy);
+	trace("*** CONTEXT 0x%016lx", (unsigned long)egl_context);
 
 	virgl_set_log_callback(virgl_log_callback, NULL, NULL);
 
@@ -483,8 +508,7 @@ int main(int argc, char **argv)
 	err = virgl_renderer_init((void *)1, VIRGL_RENDERER_THREAD_SYNC, &virgl_cbs);
 	if (err < 0) {
 		merr("virgl_renderer_init(): %s", strerror(err));
-		// goto err_egl_destroy_context;
-		goto err_drm_surface_destroy;
+		goto err_egl_destroy_context;
 	}
 
 	virgl_poll_thread.fd = virgl_renderer_get_poll_fd();
@@ -493,10 +517,18 @@ int main(int argc, char **argv)
 		goto err_virgl_cleanup;
 	}
 
+	trace("eglCreateWindowSurface()");
+	egl_surface = eglCreateWindowSurface(egl_display, egl_config, native_surface, NULL);
+	if (egl_surface == EGL_NO_SURFACE)
+		EGL_CHECK_ERROR("eglCreateWindowSurface()", err_virgl_cleanup);
+
+	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context), err_virgl_cleanup);
+	glGenFramebuffers(1, &gl_framebuffer);
+
 	unsigned int num_capsets = get_num_capsets();
 	trace("num_capsets=%u", num_capsets);
 
-	glEnable(GL_DEBUG_OUTPUT);
+	// glEnable(GL_DEBUG_OUTPUT);
 	// glDebugMessageCallback(MessageCallback, 0);
 
 	err = virtio_thread_start(num_capsets);
@@ -522,7 +554,7 @@ int main(int argc, char **argv)
 
 	virtio_thread_stop();
 	virgl_renderer_cleanup(NULL);
-	// eglDestroyContext(egl_display, egl_context);
+	eglDestroyContext(egl_display, egl_context);
 	drm_surface_destroy();
 	free(configs);
 	eglTerminate(egl_display);
@@ -534,8 +566,8 @@ err_stop_virtio_thread:
 	virtio_thread_stop();
 err_virgl_cleanup:
 	virgl_renderer_cleanup(NULL);
-// err_egl_destroy_context:
-// 	eglDestroyContext(egl_display, egl_context);
+err_egl_destroy_context:
+	eglDestroyContext(egl_display, egl_context);
 err_drm_surface_destroy:
 	drm_surface_destroy();
 err_free_configs:
