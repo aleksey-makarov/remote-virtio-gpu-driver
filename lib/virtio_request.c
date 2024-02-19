@@ -54,32 +54,21 @@ CMDDB
 }
 #endif
 
-// FIXME: implement one function instead of these two
-static unsigned int cmd_to_rsize(unsigned int type)
+static int get_cmd_size(unsigned int type, unsigned int *rs, unsigned int *ws)
 {
 	switch (type) {
 #define _CY(t) sizeof (struct virtio_gpu_ ## t)
 #define _CN sizeof(struct virtio_gpu_ctrl_hdr)
-#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: return rt;
+#define _RY(t) sizeof (struct virtio_gpu_resp_ ## t)
+#define _RN sizeof(struct virtio_gpu_ctrl_hdr)
+#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: *rs = rt; *ws = wt; return 0;
 CMDDB
 #undef _CY
 #undef _CN
-#undef _X
-	default: return 0;
-	}
-}
-
-static unsigned int cmd_to_wsize(unsigned int type)
-{
-	switch (type) {
-#define _RY(t) sizeof (struct virtio_gpu_resp_ ## t)
-#define _RN sizeof(struct virtio_gpu_ctrl_hdr)
-#define _X(n, rt, wt) case VIRTIO_GPU_CMD_ ## n: return wt;
-CMDDB
 #undef _RY
 #undef _RN
 #undef _X
-	default: return 0;
+	default: return 1;
 	}
 }
 
@@ -564,13 +553,12 @@ void virtio_request(struct virtio_thread_request *req)
 
 	trace("S%u %s%s", req->serial, cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
 
-	unsigned int rs = cmd_to_rsize(cmd_hdr->type);
-	if (!rs) {
+	unsigned int rs, ws;
+	int err = get_cmd_size(cmd_hdr->type, &rs, &ws);
+	if (err) {
 		merr("unknown command %u", cmd_hdr->type);
 		goto err;
 	}
-	unsigned int ws = cmd_to_wsize(cmd_hdr->type);
-	assert(ws); // zeroes should be excluded by cmd_to_rsize()
 
 	if (rs == sizeof(struct virtio_gpu_ctrl_hdr) || r[0].iov_len >= rs) {
 		cmd = r[0].iov_base;
