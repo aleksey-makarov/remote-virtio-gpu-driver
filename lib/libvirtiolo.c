@@ -141,6 +141,8 @@ struct vlo *vlo_init(
 	int err;
 	unsigned int i;
 
+	assert(features);
+
 	struct vlo *ret = malloc(sizeof(struct vlo) + sizeof(struct vlo_vring) * qinfosn);
 	if (!ret) {
 		merr("calloc()");
@@ -180,7 +182,7 @@ struct vlo *vlo_init(
 		.device_id = device_id,       /* __u32 IN */
 		.vendor_id = vendor_id,       /* __u32 IN */
 		.nqueues = qinfosn,           /* __u32 IN */
-		.features = features ? *features : 0, /* __u64 IN/OUT */
+		.features = *features,        /* __u64 IN/OUT */
 		.config_size = confign,       /* __u32 IN */
 		.config_kick = ret->config_fd,/* __s32 IN */
 		.card_index = 0,              /* __s32 IN */
@@ -198,7 +200,7 @@ struct vlo *vlo_init(
 	ret->idx = info.idx;
 
 	trace("output index: 0x%u", info.idx);
-	trace("output features: 0x%llu", info.features);
+	trace("output features: 0x%016llx", info.features);
 	for (i = 0; i < qinfosn; i++)
 		trace("%u: size=%u, desc=0x%llu, avail=0x%llu, used=0x%llu",
 			i, qinfos[i].size, qinfos[i].desc, qinfos[i].avail, qinfos[i].used
@@ -211,8 +213,7 @@ struct vlo *vlo_init(
 		goto error_unmap_queues;
 	}
 
-	if (features)
-		*features = info.features;
+	*features = info.features;
 
 	return ret;
 
