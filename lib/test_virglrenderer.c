@@ -353,9 +353,6 @@ void draw(void)
 				  // (int)s->window.w, (int)s->window.h, FIXME!!!
 				  1280, 800, // FIXME!!!
 				  GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-
-
 	}
 
 	EGL_RET(eglSwapBuffers(egl_display, egl_surface), out);

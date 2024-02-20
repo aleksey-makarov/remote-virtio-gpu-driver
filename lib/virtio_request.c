@@ -580,7 +580,7 @@ void virtio_request(struct virtio_thread_request *req)
 CMDDB
 #undef _X
 	default:
-		assert(0); // these sould be ruled out by cmd_to_?size()
+		assert(0); // these sould be ruled out by get_cmd_size()
 	}
 
 	if (cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE) {
