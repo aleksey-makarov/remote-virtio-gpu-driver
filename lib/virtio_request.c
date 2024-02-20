@@ -377,7 +377,9 @@ static unsigned int cmd_RESOURCE_ASSIGN_UUID(struct virtio_gpu_resource_assign_u
 {
 	(void)cmd;
 	(void)resp;
-	merr("NOT IMPLEMENTED");
+
+	trace("*************** UUID ********************");
+
 	return 0;
 }
 

@@ -9,7 +9,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Werror")
 
 include(FindPkgConfig)
 pkg_check_modules(gtk_test_modules REQUIRED gtk+-3.0 glm epoxy)
-pkg_check_modules(test_virglrenderer_modules REQUIRED virglrenderer epoxy gbm libdrm egl)
+pkg_check_modules(test_virglrenderer_modules REQUIRED virglrenderer epoxy gbm libdrm egl uuid)
 
 #
 # libvirtiolo

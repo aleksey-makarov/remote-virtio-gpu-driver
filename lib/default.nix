@@ -11,6 +11,7 @@
   virglrenderer,
   mesa,
   libdrm,
+  libuuid,
 }:
 stdenv.mkDerivation rec {
   pname = "libvirtiolo";
@@ -33,6 +34,7 @@ stdenv.mkDerivation rec {
     virglrenderer
     mesa
     libdrm
+    libuuid.dev
   ];
 
   meta = with lib; {
