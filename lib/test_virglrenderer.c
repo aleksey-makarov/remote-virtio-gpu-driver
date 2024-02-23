@@ -40,7 +40,7 @@ static void test_write_fence(void *cookie, uint32_t fence)
 {
 	(void)cookie;
 
-	trace("F0x%u", fence);
+	// trace("F0x%u", fence);
 
 	struct virtio_request_queue reqs_tmp = STAILQ_HEAD_INITIALIZER(reqs_tmp);
 
@@ -53,13 +53,13 @@ static void test_write_fence(void *cookie, uint32_t fence)
 
 		if (req->fence_id > fence) {
 			// leave this in the fence queue
-			trace("S%u F0x%lu -> fence", req->serial, req->fence_id);
+			// trace("S%u F0x%lu -> fence", req->serial, req->fence_id);
 			STAILQ_INSERT_TAIL(&virtio_request_fence, req, queue_entry);
 		} else {
 			// reply
 			// trace("S%u F0x%lu -> ready", req->serial, req->fence_id);
 			// STAILQ_INSERT_TAIL(&virtio_request_ready, req, queue_entry);
-			trace("S%u F0x%lu done", req->serial, req->fence_id);
+			// trace("S%u F0x%lu done", req->serial, req->fence_id);
 			virtio_thread_request_done(req);
 		}
 	}
@@ -68,8 +68,9 @@ static void test_write_fence(void *cookie, uint32_t fence)
 static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanout_idx, struct virgl_renderer_gl_ctx_param *param)
 {
 	(void)cookie;
+	(void)scanout_idx;
 
-	trace("*** CREATE scanout=%d, ver=%d.%d, shared=%s", scanout_idx, param->major_ver, param->minor_ver, param->shared ? "ture" : "false");
+	// trace("*** CREATE scanout=%d, ver=%d.%d, shared=%s", scanout_idx, param->major_ver, param->minor_ver, param->shared ? "ture" : "false");
 
 	virgl_renderer_gl_context ctx = EGL_NO_CONTEXT;
 	EGLContext shared_context = egl_context;
@@ -91,7 +92,7 @@ static virgl_renderer_gl_context test_create_gl_context(void *cookie, int scanou
 		EGL_CHECK_ERROR("eglCreateContext()", out);
 
 out:
-	trace("0x%016lx", (unsigned long)ctx);
+	// trace("0x%016lx", (unsigned long)ctx);
 	return ctx;
 }
 
@@ -101,7 +102,7 @@ static void test_destroy_gl_context(void *cookie, virgl_renderer_gl_context ctx)
 	(void)cookie;
 	(void)ctx;
 
-	trace("*** DESTROY 0x%016lx", (unsigned long)ctx);
+	// trace("*** DESTROY 0x%016lx", (unsigned long)ctx);
 
 	EGL_RET(eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT), out);
 	EGL_RET(eglDestroyContext(egl_display, ctx), out);
@@ -116,7 +117,7 @@ static int test_make_current(void *cookie, int scanout_idx, virgl_renderer_gl_co
 	(void)scanout_idx;
 	(void)ctx;
 
-	trace("*** MAKE CURRENT 0x%016lx", (unsigned long)ctx);
+	// trace("*** MAKE CURRENT 0x%016lx", (unsigned long)ctx);
 
 	EGL_RET(eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx), out);
 
@@ -309,7 +310,7 @@ static unsigned int get_num_capsets(void)
 
 void draw(void)
 {
-	trace("vierport %ux%u@0,0", current_scanout.width, current_scanout.height);
+	// trace("vierport %ux%u@0,0", current_scanout.width, current_scanout.height);
 
 	EGL_RET(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context), out);
 	EGL_RET(eglSwapInterval(egl_display, 0), out);
@@ -320,7 +321,7 @@ void draw(void)
 
 	if (current_scanout_info.tex_id != 0) {
 
-		trace("current_scanout_info.tex_id != 0");
+		// trace("current_scanout_info.tex_id != 0");
 
 		unsigned int y1, y2;
 

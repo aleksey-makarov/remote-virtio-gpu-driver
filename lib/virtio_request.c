@@ -553,7 +553,8 @@ void virtio_request(struct virtio_thread_request *req)
 		}
 	}
 
-	trace("S%u %s%s", req->serial, cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
+	// trace("S%u %s%s", req->serial, cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
+	trace("%s%s", cmd_to_string(cmd_hdr->type) ?: "???", cmd_hdr->flags & VIRTIO_GPU_FLAG_FENCE ? " F": "");
 
 	unsigned int rs, ws;
 	int err = get_cmd_size(cmd_hdr->type, &rs, &ws);
@@ -599,10 +600,10 @@ CMDDB
 			merr("fence_id: 0x%lx", req->fence_id);
 
 		virgl_renderer_create_fence(cmd_hdr->fence_id, cmd_hdr->type);
-		trace("S%u F0x%lu -> fence", req->serial, req->fence_id);
+		// trace("S%u F0x%lu -> fence", req->serial, req->fence_id);
 		STAILQ_INSERT_TAIL(&virtio_request_fence, req, queue_entry);
 	} else {
-		trace("S%u -> ready", req->serial);
+		// trace("S%u -> ready", req->serial);
 		STAILQ_INSERT_TAIL(&virtio_request_ready, req, queue_entry);
 	}
 
