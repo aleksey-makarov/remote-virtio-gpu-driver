@@ -27,6 +27,8 @@ _X(RESOURCE_DETACH_BACKING, _CY(resource_detach_backing), _RN) \
 _X(GET_CAPSET_INFO,         _CY(get_capset_info),         _RY(capset_info)) \
 _X(GET_CAPSET,              _CY(get_capset),              _RY(capset)) \
 _X(RESOURCE_ASSIGN_UUID,    _CY(resource_assign_uuid),    _RY(resource_uuid)) \
+_X(RESOURCE_CREATE_BLOB,    _CY(resource_create_blob),    _RN) \
+_X(SET_SCANOUT_BLOB,        _CY(set_scanout_blob),        _RN) \
 \
 /* 3d commands */ \
 _X(CTX_CREATE,              _CY(ctx_create),              _RN) \
@@ -37,6 +39,8 @@ _X(RESOURCE_CREATE_3D,      _CY(resource_create_3d),      _RN) \
 _X(TRANSFER_TO_HOST_3D,     _CY(transfer_host_3d),        _RN) \
 _X(TRANSFER_FROM_HOST_3D,   _CY(transfer_host_3d),        _RN) \
 _X(SUBMIT_3D,               _CY(cmd_submit),              _RN) \
+_X(RESOURCE_MAP_BLOB,       _CY(resource_map_blob),       _RY(map_info)) \
+_X(RESOURCE_UNMAP_BLOB,     _CY(resource_unmap_blob),     _RN) \
 \
 /* Cursor commands */ \
 _X(MOVE_CURSOR,             _CY(update_cursor),           _RN) \
@@ -378,7 +382,40 @@ static unsigned int cmd_RESOURCE_ASSIGN_UUID(struct virtio_gpu_resource_assign_u
 	(void)cmd;
 	(void)resp;
 
-	trace("*************** UUID ********************");
+	trace("RESOURCE_ASSIGN_UUID resource_id: %u", cmd->resource_id);
+
+	return 0;
+}
+
+static unsigned int cmd_RESOURCE_CREATE_BLOB(struct virtio_gpu_resource_create_blob *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	(void)cmd;
+	(void)resp;
+
+	trace("RESOURCE_CREATE_BLOB resource_id: %u, blob_mem: %u, blob_flags: 0x%x, nr_entries: %u, blob_id: %llu, size: %llu",
+		cmd->resource_id,
+		cmd->blob_mem,
+		cmd->blob_flags,
+		cmd->nr_entries,
+		cmd->blob_id,
+		cmd->size
+	);
+
+	return 0;
+}
+
+static unsigned int cmd_SET_SCANOUT_BLOB(struct virtio_gpu_set_scanout_blob *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	(void)cmd;
+	(void)resp;
+
+	trace("SET_SCANOUT_BLOB %ux%u@%u,%u, scanout_id: %u, resource_id: %u, %u%x",
+		cmd->r.x, cmd->r.y, cmd->r.width, cmd->r.height,
+		cmd->scanout_id,
+		cmd->resource_id,
+		cmd->width,
+		cmd->height
+	);
 
 	return 0;
 }
@@ -488,6 +525,30 @@ out_free:
 	free(buf);
 out:
 	return sizeof(*resp);
+}
+
+static unsigned int cmd_RESOURCE_MAP_BLOB(struct virtio_gpu_resource_map_blob *cmd, struct virtio_gpu_resp_map_info *resp)
+{
+	(void)cmd;
+	(void)resp;
+
+	trace("RESOURCE_MAP_BLOB resource_id: %u",
+		cmd->resource_id
+	);
+
+	return 0;
+}
+
+static unsigned int cmd_RESOURCE_UNMAP_BLOB(struct virtio_gpu_resource_unmap_blob *cmd, struct virtio_gpu_ctrl_hdr *resp)
+{
+	(void)cmd;
+	(void)resp;
+
+	trace("RESOURCE_UNMAP_BLOB resource_id: %u",
+		cmd->resource_id
+	);
+
+	return 0;
 }
 
 static unsigned int cmd_MOVE_CURSOR(struct virtio_gpu_update_cursor *cmd, struct virtio_gpu_ctrl_hdr *resp)

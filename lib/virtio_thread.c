@@ -297,7 +297,7 @@ int virtio_thread_start(unsigned int num_capsets)
 		goto err;
 	}
 
-	uint64_t features = 1UL << VIRTIO_GPU_F_VIRGL | 1UL << VIRTIO_F_VERSION_1 | 1UL << VIRTIO_GPU_F_RESOURCE_UUID;
+	uint64_t features = 1UL << VIRTIO_GPU_F_VIRGL | 1UL << VIRTIO_F_VERSION_1 | 1UL << VIRTIO_GPU_F_RESOURCE_UUID | 1UL << VIRTIO_GPU_F_RESOURCE_BLOB;
 	trace("features before init: 0x%016lx", features);
 	vlo = vlo_init(VIRTIO_ID_GPU, 0x1af4, qinfos, 2, &config, sizeof(config), &features);
 	if (!vlo) {
