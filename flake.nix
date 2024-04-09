@@ -71,11 +71,9 @@
       # });
 
       virglrenderer-debug = super.virglrenderer;
-
-      uhmitest = uhmitest.packages.${system}.uhmitest;
     };
 
-    pkgs = (nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay;
+    pkgs = ((nixpkgs.legacyPackages.${system}.extend overlay).extend nixGL.overlay).extend uhmitest.overlays.default;
 
     extensions = nix-vscode-extensions.extensions.${system};
 
@@ -119,7 +117,7 @@
       ${pkgs.coreutils}/bin/stty intr ^c
     '';
   in {
-    overlays.${system} = {
+    overlays = {
       default = overlay;
     };
 
